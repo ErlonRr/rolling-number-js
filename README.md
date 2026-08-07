@@ -1,6 +1,6 @@
 # 🎲 rolling-number-js
 
-> An ultra-fast, zero-dependency, GPU-accelerated **Rolling Number Animation** library and native Web Component (`<rolling-number>`) for modern web applications.
+> An ultra-fast, zero-dependency, GPU-accelerated **Rolling Number Animation** library, native Web Component (`<rolling-number>`), and dedicated framework integrations for **Angular**, **React/Next.js**, and **Vue 3**.
 
 ![rolling-number-js banner](./assets/rolling-number-js.png)
 
@@ -10,7 +10,7 @@
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/rolling-number?color=10b981&label=minzipped&style=flat-square)](https://bundlephobia.com/package/rolling-number)
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square)](#)
-[![Framework Agnostic](https://img.shields.io/badge/Framework-React%20%7C%20Vue%20%7C%20Svelte%20%7C%20Angular%20%7C%20Vanilla-blue?style=flat-square)](#)
+[![Framework Agnostic](https://img.shields.io/badge/Frameworks-Angular%20%7C%20React%20%7C%20Vue%20%7C%20Svelte%20%7C%20Vanilla-blue?style=flat-square)](#)
 
 </div>
 
@@ -24,11 +24,14 @@
 
 ## ✨ Features
 
-- ⚡ **Ultra Fast & Lightweight**: Zero external runtime dependencies. Core package is **< 1.5 KB** gzipped.
-- 🚀 **Hardware Accelerated (60 FPS)**: Powered by pure CSS `translateY` transitions on GPU compositor threads. No blocking `requestAnimationFrame` loops.
-- 🌐 **Framework Agnostic**: Works natively in **React**, **Vue**, **Svelte**, **Angular**, **Solid**, or **Vanilla HTML/JS**.
-- 🧩 **Dual Usage**: Use as a native HTML5 Custom Element (`<rolling-number>`) or via programmatic Vanilla JS Class (`RollingNumberCore`).
-- ♿ **Accessible**: Built-in screen reader support (`role="img"`, dynamic `aria-label`, and decorative rungs marked with `aria-hidden="true"`).
+- ⚡ **Ultra Fast & Lightweight**: Zero external runtime dependencies for core library. Core engine is **< 1.5 KB** gzipped.
+- 🚀 **Hardware Accelerated (60 FPS)**: Powered by pure CSS `translateY` transitions on GPU compositor threads. No blocking JS loops.
+- 🌐 **Native Framework Subpaths**:
+  - `rolling-number` — Core Vanilla JS & Web Component
+  - `rolling-number/angular` — Standalone Directive for **Angular 16-19+** (Supports PrimeNG 19, Material, etc.)
+  - `rolling-number/react` — React Component (`<RollingNumber />`) & Hook (`useRollingNumber`)
+  - `rolling-number/vue` — Vue 3 Directive (`v-rolling-number`) & Component (`<RollingNumber />`)
+- ♿ **Accessible**: Built-in screen reader support (`role="img"`, dynamic `aria-label`, decorative rungs marked with `aria-hidden="true"`).
 - 🎨 **Fully Customizable**: Style font sizes, colors, duration, and easing curves using simple CSS variables.
 
 ---
@@ -50,98 +53,116 @@ yarn add rolling-number
 
 ---
 
-## 🚀 Quick Start
+## 🅰️ Angular Integration (including PrimeNG 19, Material, etc.)
 
-### 1. Web Component (`<rolling-number>`)
-
-Register the web component once in your app entrypoint:
+Attach `[rollingNumber]` to **ANY** HTML element, text container, or UI library component like PrimeNG 19 `<p-inputNumber>`:
 
 ```typescript
-import 'rolling-number/register';
-import 'rolling-number/style.css';
-```
-
-Then use the custom element directly in your HTML or JSX/template:
-
-```html
-<rolling-number value="1234" pad="4"></rolling-number>
-
-<!-- With max clamp limit (e.g., notification badge capped at 99) -->
-<rolling-number value="150" pad="2" max="99"></rolling-number>
-
-<!-- Negative numbers -->
-<rolling-number value="-42" pad="2"></rolling-number>
-```
-
-### 2. Vanilla JavaScript / TypeScript API
-
-```typescript
-import { RollingNumberCore } from 'rolling-number';
+import { Component } from '@angular/core';
+import { RollingNumberDirective } from 'rolling-number/angular';
 import 'rolling-number/style.css';
 
-const container = document.getElementById('counter-container');
+@Component({
+  selector: 'app-demo',
+  standalone: true,
+  imports: [RollingNumberDirective],
+  template: `
+    <!-- Simple HTML Element -->
+    <span [rollingNumber]="totalAmount" [pad]="2"></span>
 
-// Instantiate
-const counter = new RollingNumberCore(container, {
-  value: 42,
-  pad: 3,
-  max: 999
-});
-
-// Update value programmaticly
-counter.setValue(128);
-
-// Update multiple options
-counter.update({ value: 500, pad: 4 });
-
-// Clean up
-counter.destroy();
+    <!-- On PrimeNG 19 InputNumber or Custom Component -->
+    <p-inputNumber [(ngModel)]="totalAmount" [rollingNumber]="totalAmount" [pad]="2"></p-inputNumber>
+  `
+})
+export class DemoComponent {
+  totalAmount = 1250;
+}
 ```
 
 ---
 
-## 💻 Framework Examples
+## ⚛️ React & Next.js Integration
 
-### React 19 / Next.js
 ```tsx
-import { useEffect, useRef } from 'react';
-import 'rolling-number/register';
+import { useState } from 'react';
+import { RollingNumber } from 'rolling-number/react';
 import 'rolling-number/style.css';
 
-export function Counter({ count }: { count: number }) {
-  return <rolling-number value={count} pad={3} />;
+export function ReactCounter() {
+  const [count, setCount] = useState(42);
+
+  return (
+    <div>
+      <RollingNumber value={count} pad={3} className="my-counter" />
+      <button onClick={() => setCount(c => c + 10)}>Add</button>
+    </div>
+  );
 }
 ```
 
-### Vue 3
+Or using the custom React Hook (`useRollingNumber`):
+
+```tsx
+import { useRef } from 'react';
+import { useRollingNumber } from 'rolling-number/react';
+import 'rolling-number/style.css';
+
+export function HookCounter({ value }: { value: number }) {
+  const spanRef = useRef<HTMLSpanElement>(null);
+  useRollingNumber(spanRef, { value, pad: 2 });
+
+  return <span ref={spanRef} />;
+}
+```
+
+---
+
+## 🟢 Vue 3 Integration
+
 ```vue
 <script setup>
-import 'rolling-number/register';
-import 'rolling-number/style.css';
 import { ref } from 'vue';
+import { RollingNumber, vRollingNumber } from 'rolling-number/vue';
+import 'rolling-number/style.css';
 
-const count = ref(100);
+const val = ref(99);
 </script>
 
 <template>
-  <rolling-number :value="count" pad="3" />
+  <!-- Via Vue Component -->
+  <RollingNumber :value="val" :pad="2" />
+
+  <!-- Or via Vue Directive -->
+  <span v-rolling-number="val"></span>
 </template>
 ```
 
-### Angular
+---
+
+## 🌐 Web Component & Vanilla JS
+
+### Web Component (`<rolling-number>`)
 ```typescript
-import { Component, input } from '@angular/core';
 import 'rolling-number/register';
 import 'rolling-number/style.css';
+```
 
-@Component({
-  selector: 'app-counter',
-  standalone: true,
-  template: `<rolling-number [attr.value]="val()" pad="3"></rolling-number>`
-})
-export class CounterComponent {
-  val = input<number>(0);
-}
+```html
+<rolling-number value="1234" pad="4"></rolling-number>
+```
+
+### Vanilla JS API
+```typescript
+import { RollingNumberCore } from 'rolling-number';
+import 'rolling-number/style.css';
+
+const counter = new RollingNumberCore(document.getElementById('counter'), {
+  value: 42,
+  pad: 3,
+  max: 99
+});
+
+counter.setValue(128);
 ```
 
 ---
@@ -156,29 +177,17 @@ export class CounterComponent {
 | `pad` | `number` | `1` | Minimum number of digit columns (pads leading zeros). |
 | `max` | `number \| null` | `null` | Maximum value limit (e.g. `99` for notification counters like `99+`). |
 
-### `RollingNumberCore` Class Methods
-
-- **`setValue(value: number): void`**: Animates counter to new number.
-- **`setPad(pad: number): void`**: Updates zero-padding minimum digit columns.
-- **`setMax(max: number | null): void`**: Updates maximum clamping limit.
-- **`update(options: RollingNumberOptions): void`**: Updates multiple options at once.
-- **`destroy(): void`**: Cleans up DOM nodes and event listeners.
-
 ---
 
 ## 🎨 Customization (CSS Variables)
 
-Customize transition timing, animation easing, and font styles directly through CSS variables:
-
 ```css
 rolling-number, .rn-rolling-number {
-  /* Animation Speed & Easing Curve */
   --rn-duration: 0.6s;
-  --rn-easing: cubic-bezier(0.34, 1.56, 0.64, 1); /* Bounce easing */
+  --rn-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Typography */
   font-family: 'JetBrains Mono', monospace;
-  font-size: 3rem;
+  font-size: 2.5rem;
   color: #6366f1;
 }
 ```

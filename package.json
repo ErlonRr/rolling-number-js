@@ -1,7 +1,7 @@
 {
   "name": "rolling-number",
-  "version": "1.0.0",
-  "description": "Ultra-fast, zero-dependency rolling number counter library and web component for modern web apps.",
+  "version": "1.1.0",
+  "description": "Ultra-fast, zero-dependency rolling number counter library, web component, and framework directives for Angular, React, and Vue.",
   "type": "module",
   "main": "./dist/rolling-number.cjs",
   "module": "./dist/rolling-number.js",
@@ -18,6 +18,21 @@
       "import": "./dist/register.js",
       "require": "./dist/register.cjs"
     },
+    "./angular": {
+      "types": "./dist/angular/index.d.ts",
+      "import": "./dist/angular.js",
+      "require": "./dist/angular.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react.js",
+      "require": "./dist/react.cjs"
+    },
+    "./vue": {
+      "types": "./dist/vue/index.d.ts",
+      "import": "./dist/vue.js",
+      "require": "./dist/vue.cjs"
+    },
     "./style.css": "./dist/style.css"
   },
   "files": [
@@ -33,15 +48,40 @@
     "counter",
     "odometer",
     "web-component",
+    "angular-directive",
+    "react-component",
+    "vue-directive",
     "vanilla-js",
     "animation",
     "typescript"
   ],
-  "author": "",
+  "author": "Erlon Rr",
   "license": "MIT",
   "devDependencies": {
+    "@angular/core": "^18.0.0",
+    "@types/react": "^18.3.0",
+    "react": "^18.3.0",
+    "rxjs": "^7.8.0",
     "typescript": "^5.4.0",
     "vite": "^5.2.0",
-    "vite-plugin-dts": "^3.8.0"
+    "vite-plugin-dts": "^3.8.0",
+    "vue": "^3.4.0",
+    "zone.js": "^0.14.0"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=16.0.0",
+    "react": ">=16.8.0",
+    "vue": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/core": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
   }
 }

@@ -7,7 +7,10 @@ export default defineConfig({
     lib: {
       entry: {
         'rolling-number': resolve(__dirname, 'src/index.ts'),
-        'register': resolve(__dirname, 'src/register.ts')
+        'register': resolve(__dirname, 'src/register.ts'),
+        'angular': resolve(__dirname, 'src/angular/index.ts'),
+        'react': resolve(__dirname, 'src/react/index.ts'),
+        'vue': resolve(__dirname, 'src/vue/index.ts')
       },
       name: 'RollingNumber',
       formats: ['es', 'cjs'],
@@ -18,7 +21,14 @@ export default defineConfig({
       }
     },
     rollupOptions: {
+      external: ['@angular/core', '@angular/common', 'react', 'react-dom', 'vue'],
       output: {
+        globals: {
+          '@angular/core': 'ng.core',
+          react: 'React',
+          'react-dom': 'ReactDOM',
+          vue: 'Vue'
+        },
         assetFileNames: (assetInfo) => {
           if (assetInfo.name === 'style.css') return 'style.css';
           return assetInfo.name || 'assets/[name][extname]';
@@ -34,4 +44,3 @@ export default defineConfig({
     })
   ]
 });
-
