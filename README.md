@@ -1,6 +1,6 @@
 # 🎲 rolling-number-js
 
-> An ultra-fast, zero-dependency, GPU-accelerated **Rolling Number Animation** library, native Web Component (`<rolling-number>`), and dedicated framework integrations for **Angular**, **React/Next.js**, and **Vue 3**.
+> An ultra-fast, zero-dependency, GPU-accelerated **Rolling Number Animation** library, native Web Component (`<rolling-number>`), and dedicated framework directives for **Angular** (PrimeNG, Material, AntD), **React/Next.js** (Shadcn, MUI, AntD), and **Vue 3** (Vuetify, Element Plus, PrimeVue).
 
 ![rolling-number-js banner](./assets/rolling-number-js.png)
 
@@ -26,11 +26,11 @@
 
 - ⚡ **Ultra Fast & Lightweight**: Zero external runtime dependencies for core library. Core engine is **< 1.5 KB** gzipped.
 - 🚀 **Hardware Accelerated (60 FPS)**: Powered by pure CSS `translateY` transitions on GPU compositor threads. No blocking JS loops.
-- 🌐 **Native Framework Subpaths**:
+- 🌐 **Native Framework Subpaths (Tree-Shakable)**:
   - `rolling-number` — Core Vanilla JS & Web Component
-  - `rolling-number/angular` — Standalone Directive for **Angular 16-19+** (Supports PrimeNG 19, Material, etc.)
-  - `rolling-number/react` — React Component (`<RollingNumber />`) & Hook (`useRollingNumber`)
-  - `rolling-number/vue` — Vue 3 Directive (`v-rolling-number`) & Component (`<RollingNumber />`)
+  - `rolling-number/angular` — Standalone Directive for **Angular 16-19+** (PrimeNG, Angular Material, NG-ZORRO)
+  - `rolling-number/react` — React Component (`<RollingNumber />`) & Hook (`useRollingNumber`) (Shadcn, MUI, AntD)
+  - `rolling-number/vue` — Vue 3 Directive (`v-rolling-number`) & Component (`<RollingNumber />`) (Vuetify, Element Plus, PrimeVue)
 - ♿ **Accessible**: Built-in screen reader support (`role="img"`, dynamic `aria-label`, decorative rungs marked with `aria-hidden="true"`).
 - 🎨 **Fully Customizable**: Style font sizes, colors, duration, and easing curves using simple CSS variables.
 
@@ -53,87 +53,212 @@ yarn add rolling-number
 
 ---
 
-## 🅰️ Angular Integration (including PrimeNG 19, Material, etc.)
+## 🅰️ Angular UI Library Integrations (PrimeNG, Material, NG-ZORRO)
 
-Attach `[rollingNumber]` to **ANY** HTML element, text container, or UI library component like PrimeNG 19 `<p-inputNumber>`:
-
+### 1. PrimeNG 19 (`p-inputNumber` / `p-badge`)
 ```typescript
 import { Component } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { InputNumberModule } from 'primeng/inputnumber';
+import { BadgeModule } from 'primeng/badge';
 import { RollingNumberDirective } from 'rolling-number/angular';
 import 'rolling-number/style.css';
 
 @Component({
   selector: 'app-demo',
   standalone: true,
-  imports: [RollingNumberDirective],
+  imports: [FormsModule, InputNumberModule, BadgeModule, RollingNumberDirective],
   template: `
-    <!-- Simple HTML Element -->
-    <span [rollingNumber]="totalAmount" [pad]="2"></span>
+    <!-- PrimeNG 19 InputNumber -->
+    <p-inputNumber [(ngModel)]="price" [rollingNumber]="price" [pad]="2"></p-inputNumber>
 
-    <!-- On PrimeNG 19 InputNumber or Custom Component -->
-    <p-inputNumber [(ngModel)]="totalAmount" [rollingNumber]="totalAmount" [pad]="2"></p-inputNumber>
+    <!-- PrimeNG Badge / Tag -->
+    <span pBadge [rollingNumber]="cartItems" [max]="99"></span>
   `
 })
 export class DemoComponent {
-  totalAmount = 1250;
+  price = 1250;
+  cartItems = 42;
+}
+```
+
+### 2. Angular Material (`mat-chip` / `mat-card`)
+```typescript
+import { Component } from '@angular/core';
+import { MatChipsModule } from '@angular/material/chips';
+import { RollingNumberDirective } from 'rolling-number/angular';
+import 'rolling-number/style.css';
+
+@Component({
+  selector: 'app-material-demo',
+  standalone: true,
+  imports: [MatChipsModule, RollingNumberDirective],
+  template: `
+    <mat-chip-option selected>
+      Balance: $<span [rollingNumber]="balance" [pad]="2"></span>
+    </mat-chip-option>
+  `
+})
+export class MaterialDemoComponent {
+  balance = 850;
+}
+```
+
+### 3. NG-ZORRO (Ant Design Angular)
+```typescript
+import { Component } from '@angular/core';
+import { NzStatisticModule } from 'ng-zorro-antd/statistic';
+import { RollingNumberDirective } from 'rolling-number/angular';
+import 'rolling-number/style.css';
+
+@Component({
+  selector: 'app-ant-demo',
+  standalone: true,
+  imports: [NzStatisticModule, RollingNumberDirective],
+  template: `
+    <nz-statistic [nzTitle]="'Active Users'">
+      <ng-template #nzTpl>
+        <span [rollingNumber]="usersCount" [pad]="3"></span>
+      </ng-template>
+    </nz-statistic>
+  `
+})
+export class AntDemoComponent {
+  usersCount = 1420;
 }
 ```
 
 ---
 
-## ⚛️ React & Next.js Integration
+## ⚛️ React & Next.js UI Library Integrations (Shadcn UI, MUI, AntD)
 
+### 1. Shadcn UI / Tailwind CSS
 ```tsx
 import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { RollingNumber } from 'rolling-number/react';
 import 'rolling-number/style.css';
 
-export function ReactCounter() {
-  const [count, setCount] = useState(42);
+export function ShadcnStatCard() {
+  const [revenue, setRevenue] = useState(45200);
 
   return (
-    <div>
-      <RollingNumber value={count} pad={3} className="my-counter" />
-      <button onClick={() => setCount(c => c + 10)}>Add</button>
-    </div>
+    <Card className="w-80">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+        <Badge variant="secondary">Live</Badge>
+      </CardHeader>
+      <CardContent>
+        <div className="text-3xl font-bold text-indigo-500">
+          $<RollingNumber value={revenue} pad={5} />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 ```
 
-Or using the custom React Hook (`useRollingNumber`):
-
+### 2. MUI (Material UI)
 ```tsx
-import { useRef } from 'react';
-import { useRollingNumber } from 'rolling-number/react';
+import { useState } from 'react';
+import { Card, Typography, Chip } from '@mui/material';
+import { RollingNumber } from 'rolling-number/react';
 import 'rolling-number/style.css';
 
-export function HookCounter({ value }: { value: number }) {
-  const spanRef = useRef<HTMLSpanElement>(null);
-  useRollingNumber(spanRef, { value, pad: 2 });
+export function MuiStat() {
+  const [count, setCount] = useState(1280);
 
-  return <span ref={spanRef} />;
+  return (
+    <Card sx={{ p: 3 }}>
+      <Typography variant="subtitle2" color="text.secondary">
+        Active Subscribers
+      </Typography>
+      <Typography variant="h3" color="primary" sx={{ my: 1, fontWeight: 'bold' }}>
+        <RollingNumber value={count} pad={4} />
+      </Typography>
+      <Chip label="+12% this week" color="success" size="small" />
+    </Card>
+  );
+}
+```
+
+### 3. Ant Design (AntD)
+```tsx
+import { Statistic } from 'antd';
+import { RollingNumber } from 'rolling-number/react';
+import 'rolling-number/style.css';
+
+export function AntdStat({ value }: { value: number }) {
+  return (
+    <Statistic
+      title="Feedback Score"
+      formatter={() => <RollingNumber value={value} pad={2} />}
+    />
+  );
 }
 ```
 
 ---
 
-## 🟢 Vue 3 Integration
+## 🟢 Vue 3 UI Library Integrations (Vuetify, Element Plus, PrimeVue)
 
+### 1. PrimeVue (`InputNumber` / `Badge`)
 ```vue
 <script setup>
 import { ref } from 'vue';
-import { RollingNumber, vRollingNumber } from 'rolling-number/vue';
+import InputNumber from 'primevue/inputnumber';
+import Badge from 'primevue/badge';
+import { vRollingNumber } from 'rolling-number/vue';
 import 'rolling-number/style.css';
 
-const val = ref(99);
+const val = ref(1500);
 </script>
 
 <template>
-  <!-- Via Vue Component -->
-  <RollingNumber :value="val" :pad="2" />
+  <div class="flex gap-4 items-center">
+    <InputNumber v-model="val" v-rolling-number="val" />
+    <Badge v-rolling-number="{ value: val, max: 999 }" severity="info" />
+  </div>
+</template>
+```
 
-  <!-- Or via Vue Directive -->
-  <span v-rolling-number="val"></span>
+### 2. Vuetify 3 (`v-card` / `v-chip`)
+```vue
+<script setup>
+import { ref } from 'vue';
+import { RollingNumber } from 'rolling-number/vue';
+import 'rolling-number/style.css';
+
+const downloads = ref(8420);
+</script>
+
+<template>
+  <v-card class="pa-4" elevation="3">
+    <v-card-title>App Downloads</v-card-title>
+    <div class="text-h3 font-weight-bold text-primary">
+      <RollingNumber :value="downloads" :pad="4" />
+    </div>
+  </v-card>
+</template>
+```
+
+### 3. Element Plus (`el-statistic` / `el-badge`)
+```vue
+<script setup>
+import { ref } from 'vue';
+import { vRollingNumber } from 'rolling-number/vue';
+import 'rolling-number/style.css';
+
+const score = ref(980);
+</script>
+
+<template>
+  <el-statistic title="Performance Score">
+    <template #content>
+      <span v-rolling-number="score"></span>
+    </template>
+  </el-statistic>
 </template>
 ```
 
