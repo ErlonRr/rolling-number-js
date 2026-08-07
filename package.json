@@ -1,12 +1,20 @@
 {
   "name": "rolling-number",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Ultra-fast, zero-dependency rolling number counter library, web component, and framework directives for Angular, React, and Vue.",
   "type": "module",
   "main": "./dist/rolling-number.cjs",
   "module": "./dist/rolling-number.js",
   "types": "./dist/index.d.ts",
   "style": "./dist/style.css",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ErlonRr/rolling-number-js.git"
+  },
+  "homepage": "https://github.com/ErlonRr/rolling-number-js#readme",
+  "bugs": {
+    "url": "https://github.com/ErlonRr/rolling-number-js/issues"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -36,7 +44,8 @@
     "./style.css": "./dist/style.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets"
   ],
   "scripts": {
     "dev": "vite",

@@ -2,7 +2,7 @@
 
 > An ultra-fast, zero-dependency, GPU-accelerated **Rolling Number Animation** library, native Web Component (`<rolling-number>`), and dedicated framework directives for **Angular** (PrimeNG, Material, AntD), **React/Next.js** (Shadcn, MUI, AntD), and **Vue 3** (Vuetify, Element Plus, PrimeVue).
 
-![rolling-number-js banner](./assets/rolling-number-js.png)
+![rolling-number-js banner](https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/rolling-number-js.png)
 
 <div align="center">
 
@@ -18,7 +18,7 @@
 
 ## ⚡ Preview
 
-![rolling-number-js demo animation](./assets/rolling-number-js.gif)
+![rolling-number-js demo animation](https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/rolling-number-js.gif)
 
 ---
 
