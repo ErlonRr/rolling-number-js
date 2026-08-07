@@ -1,0 +1,47 @@
+{
+  "name": "rolling-number",
+  "version": "1.0.0",
+  "description": "Ultra-fast, zero-dependency rolling number counter library and web component for modern web apps.",
+  "type": "module",
+  "main": "./dist/rolling-number.cjs",
+  "module": "./dist/rolling-number.js",
+  "types": "./dist/index.d.ts",
+  "style": "./dist/style.css",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/rolling-number.js",
+      "require": "./dist/rolling-number.cjs"
+    },
+    "./register": {
+      "types": "./dist/register.d.ts",
+      "import": "./dist/register.js",
+      "require": "./dist/register.cjs"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "rolling-number",
+    "counter",
+    "odometer",
+    "web-component",
+    "vanilla-js",
+    "animation",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vite-plugin-dts": "^3.8.0"
+  }
+}
