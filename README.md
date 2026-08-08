@@ -26,6 +26,7 @@
 
 - ⚡ **Ultra Fast & Lightweight**: Zero external runtime dependencies for core library. Core engine is **< 1.5 KB** gzipped.
 - 🚀 **Hardware Accelerated (60 FPS)**: Powered by pure CSS `translateY` transitions on GPU compositor threads. No blocking JS loops.
+- 🔄 **Progressive Value Interpolation (rAF)**: Smooth 60 FPS count-up / count-down value stepping with `easeOutCubic` easing (`interpolate` option).
 - 🌐 **Native Framework Subpaths (Tree-Shakable)**:
   - `rolling-number` — Core Vanilla JS & Web Component
   - `rolling-number/angular` — Standalone Directive for **Angular 16-19+** (PrimeNG, Angular Material, NG-ZORRO)
@@ -301,6 +302,8 @@ counter.setValue(128);
 | `value` | `number` | `0` | The numeric value to display and animate to. |
 | `pad` | `number` | `1` | Minimum number of digit columns (pads leading zeros). |
 | `max` | `number \| null` | `null` | Maximum value limit (e.g. `99` for notification counters like `99+`). |
+| `interpolate` | `boolean` | `true` | Whether value changes smoothly step through intermediate numbers (rAF). |
+| `duration` | `number` | `400` | Animation duration in milliseconds when `interpolate` is enabled. |
 
 ---
 
