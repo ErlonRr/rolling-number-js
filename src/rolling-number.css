@@ -12,6 +12,11 @@
   vertical-align: baseline;
 }
 
+.rn-interpolating .rn-scale,
+.rn-interpolating .rn-sign {
+  transition: none !important;
+}
+
 .rn-sign {
   display: inline-block;
   line-height: 1;

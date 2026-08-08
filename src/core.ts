@@ -7,16 +7,24 @@ export interface RollingNumberOptions {
   pad?: number;
   /** Clamp the displayed value to this maximum (e.g. 99 for a notification badge). Default: null */
   max?: number | null;
+  /** Whether to progressively interpolate values through intermediate numbers. Default: true */
+  interpolate?: boolean;
+  /** Animation duration in milliseconds when interpolate is true. Default: 400 */
+  duration?: number;
 }
 
 export class RollingNumberCore {
   private container: HTMLElement;
   private value: number;
+  private displayValue: number;
   private pad: number;
   private max: number | null;
+  private interpolate: boolean;
+  private duration: number;
 
   private signEl: HTMLSpanElement | null = null;
   private digitCols: HTMLSpanElement[] = [];
+  private animFrameId: number | null = null;
 
   constructor(container: HTMLElement, options: RollingNumberOptions = {}) {
     if (!(container instanceof HTMLElement)) {
@@ -25,8 +33,11 @@ export class RollingNumberCore {
 
     this.container = container;
     this.value = Number(options.value ?? 0);
+    this.displayValue = this.value;
     this.pad = Math.max(1, Math.floor(options.pad ?? 1));
     this.max = options.max !== undefined && options.max !== null ? Number(options.max) : null;
+    this.interpolate = options.interpolate ?? true;
+    this.duration = options.duration ?? 400;
 
     this.initDOM();
     this.render();
@@ -46,7 +57,7 @@ export class RollingNumberCore {
    * Calculates the clamped positive integer display value.
    */
   private getDisplayValue(): number {
-    const rounded = Math.round(this.value);
+    const rounded = Math.round(this.displayValue);
     const absVal = Math.abs(rounded);
     return this.max !== null ? Math.min(absVal, this.max) : absVal;
   }
@@ -94,12 +105,15 @@ export class RollingNumberCore {
   /**
    * Renders and updates the DOM using fast element reconciliation.
    */
+  /**
+   * Renders and updates the DOM using fast element reconciliation.
+   */
   public render(): void {
-    const isNegative = Math.round(this.value) < 0;
+    const isNegative = Math.round(this.displayValue) < 0;
     const digits = this.getDisplayDigits();
 
     // Accessibility label
-    this.container.setAttribute('aria-label', this.value.toString());
+    this.container.setAttribute('aria-label', Math.round(this.value).toString());
 
     // 1. Handle Minus Sign
     if (isNegative) {
@@ -151,19 +165,80 @@ export class RollingNumberCore {
   }
 
   /**
-   * Updates the displayed numeric value.
+   * Updates the displayed numeric value with optional progressive interpolation.
    */
-  public setValue(value: number): void {
-    if (this.value === value) return;
-    this.value = Number(value);
-    this.render();
+  public setValue(value: number, animate: boolean = this.interpolate): void {
+    const targetVal = Number(value);
+    if (this.value === targetVal && this.displayValue === targetVal) return;
+
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+
+    if (!animate || this.duration <= 0) {
+      this.container.classList.remove('rn-interpolating');
+      this.value = targetVal;
+      this.displayValue = targetVal;
+      this.render();
+      return;
+    }
+
+    const startVal = this.displayValue;
+    const delta = targetVal - startVal;
+    this.value = targetVal;
+
+    if (Math.abs(delta) < 0.001) {
+      this.displayValue = targetVal;
+      this.render();
+      return;
+    }
+
+    this.container.classList.add('rn-interpolating');
+    const startTime = performance.now();
+    const duration = this.duration;
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      // easeOutCubic curve
+      const ease = 1 - Math.pow(1 - progress, 3);
+
+      this.displayValue = startVal + delta * ease;
+      this.render();
+
+      if (progress < 1) {
+        this.animFrameId = requestAnimationFrame(step);
+      } else {
+        this.displayValue = targetVal;
+        this.render();
+        this.container.classList.remove('rn-interpolating');
+        this.animFrameId = null;
+      }
+    };
+
+    this.animFrameId = requestAnimationFrame(step);
   }
 
   /**
-   * Gets the current numeric value.
+   * Gets the current numeric target value.
    */
   public getValue(): number {
     return this.value;
+  }
+
+  /**
+   * Updates whether value changes are progressively interpolated.
+   */
+  public setInterpolate(interpolate: boolean): void {
+    this.interpolate = Boolean(interpolate);
+  }
+
+  /**
+   * Updates the animation duration in milliseconds.
+   */
+  public setDuration(duration: number): void {
+    this.duration = Math.max(0, Number(duration));
   }
 
   /**
@@ -190,22 +265,22 @@ export class RollingNumberCore {
    * Updates multiple options at once.
    */
   public update(options: RollingNumberOptions): void {
-    let changed = false;
-
-    if (options.value !== undefined && this.value !== options.value) {
-      this.value = Number(options.value);
-      changed = true;
-    }
     if (options.pad !== undefined && this.pad !== options.pad) {
       this.pad = Math.max(1, Math.floor(options.pad));
-      changed = true;
     }
     if (options.max !== undefined && this.max !== options.max) {
       this.max = options.max !== null ? Number(options.max) : null;
-      changed = true;
+    }
+    if (options.interpolate !== undefined) {
+      this.interpolate = Boolean(options.interpolate);
+    }
+    if (options.duration !== undefined) {
+      this.duration = Math.max(0, Number(options.duration));
     }
 
-    if (changed) {
+    if (options.value !== undefined && this.value !== options.value) {
+      this.setValue(options.value);
+    } else {
       this.render();
     }
   }
@@ -214,6 +289,11 @@ export class RollingNumberCore {
    * Destroys the instance and empties the container DOM.
    */
   public destroy(): void {
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+    this.container.classList.remove('rn-interpolating');
     this.container.innerHTML = '';
     this.digitCols = [];
     this.signEl = null;

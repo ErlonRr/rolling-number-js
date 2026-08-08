@@ -207,20 +207,81 @@
       border-radius: 4px;
       color: #e2e8f0;
     }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .lang-switcher {
+      display: flex;
+      gap: 0.25rem;
+      background: var(--card-bg);
+      padding: 0.25rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .lang-btn.active {
+      background: var(--accent-color);
+      color: white;
+    }
+
+    .github-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--text-color);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.4rem 0.8rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      transition: border-color 0.2s;
+    }
+
+    .github-link:hover {
+      border-color: var(--accent-color);
+    }
   </style>
 </head>
 <body>
 
   <div class="container">
     <header>
+      <div class="header-top">
+        <div class="lang-switcher">
+          <button id="btnLangEN" class="lang-btn active">EN</button>
+          <button id="btnLangIT" class="lang-btn">IT</button>
+        </div>
+        <a href="https://github.com/ErlonRr/rolling-number-js" target="_blank" rel="noopener noreferrer" class="github-link">
+          <span>GitHub</span> 🐙
+        </a>
+      </div>
       <h1>rolling-number-js</h1>
-      <p class="subtitle">Animazione a rullo per numeri in Pure JS + Web Component Nativo</p>
+      <p class="subtitle" id="tSubtitle">An ultra-fast, zero-dependency rolling number counter library & native Web Component</p>
     </header>
 
     <!-- Main Interactive Demo -->
     <section class="card">
       <div class="card-title">
-        <span>🎮 Demo Interattiva</span>
+        <span id="tDemoTitle">🎮 Interactive Demo</span>
         <span class="badge">Web Component & Vanilla JS</span>
       </div>
 
@@ -232,19 +293,28 @@
       <div class="controls">
         <button id="btnInc">+ 100</button>
         <button id="btnDec">- 100</button>
-        <button id="btnRand">Casuale 🎲</button>
-        <button id="btnNeg">Negativo ➖</button>
+        <button id="btnRand">Random 🎲</button>
+        <button id="btnNeg">Negative ➖</button>
         <button id="btnReset">Reset 0</button>
       </div>
 
       <div class="options-grid">
         <div class="option-item">
-          <label for="padInput">Min Digits (Pad):</label>
+          <label for="padInput" id="tLabelPad">Min Digits (Pad):</label>
           <input type="number" id="padInput" value="4" min="1" max="10" />
         </div>
         <div class="option-item">
-          <label for="maxInput">Max Limit (Clamp):</label>
-          <input type="number" id="maxInput" placeholder="Nessuno (es. 9999)" />
+          <label for="maxInput" id="tLabelMax">Max Limit (Clamp):</label>
+          <input type="number" id="maxInput" placeholder="None (e.g. 9999)" />
+        </div>
+        <div class="option-item">
+          <label for="interpolateInput" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" id="interpolateInput" checked style="width: auto;" /> <span id="tLabelInterpolate">Smooth Interpolation (rAF)</span>
+          </label>
+        </div>
+        <div class="option-item">
+          <label for="durationInput" id="tLabelDuration">Animation Duration (ms):</label>
+          <input type="number" id="durationInput" value="400" min="50" max="2000" step="50" />
         </div>
       </div>
     </section>
@@ -252,17 +322,17 @@
     <!-- Nx Stress Test -->
     <section class="card">
       <div class="card-title">
-        <span>⚡ Nx Performance Test (100 Numeri Simultanei)</span>
+        <span id="tStressTitle">⚡ Nx Performance Test (100 Simultaneous Counters)</span>
         <span class="badge">60 FPS Hardware Accelerated</span>
       </div>
 
-      <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
-        Clicca sul pulsante per aggiornare simultaneamente 100 elementi <code>&lt;rolling-number&gt;</code> e verificare l'assenza di lag.
+      <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;" id="tStressDesc">
+        Click the button to update 100 <code>&lt;rolling-number&gt;</code> elements simultaneously and verify 60 FPS smoothness.
       </p>
 
       <div style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center;">
-        <button id="btnStressRandomize" style="background: var(--accent-gradient);">Aggiorna Tutti i 100 Numeri 🚀</button>
-        <button id="btnStressAuto">Auto Loop (Start/Stop)</button>
+        <button id="btnStressRandomize" style="background: var(--accent-gradient);">Randomize All 100 Numbers 🚀</button>
+        <button id="btnStressAuto">Auto Loop (Start)</button>
       </div>
 
       <div class="stress-grid" id="stressContainer">
@@ -278,6 +348,76 @@
     // Auto-define <rolling-number>
     defineRollingNumber();
 
+    const translations = {
+      en: {
+        subtitle: 'An ultra-fast, zero-dependency rolling number counter library & native Web Component',
+        demoTitle: '🎮 Interactive Demo',
+        btnRand: 'Random 🎲',
+        btnNeg: 'Negative ➖',
+        btnReset: 'Reset 0',
+        labelPad: 'Min Digits (Pad):',
+        labelMax: 'Max Limit (Clamp):',
+        placeholderMax: 'None (e.g. 9999)',
+        labelInterpolate: 'Smooth Interpolation (rAF)',
+        labelDuration: 'Animation Duration (ms):',
+        stressTitle: '⚡ Nx Performance Test (100 Simultaneous Counters)',
+        stressDesc: 'Click the button to update 100 <code>&lt;rolling-number&gt;</code> elements simultaneously and verify 60 FPS smoothness.',
+        btnStressRandomize: 'Randomize All 100 Numbers 🚀',
+        btnStressAutoStart: 'Auto Loop (Start)',
+        btnStressAutoStop: 'Auto Loop (Stop)',
+      },
+      it: {
+        subtitle: 'Animazione a rullo per numeri in Pure JS + Web Component Nativo',
+        demoTitle: '🎮 Demo Interattiva',
+        btnRand: 'Casuale 🎲',
+        btnNeg: 'Negativo ➖',
+        btnReset: 'Reset 0',
+        labelPad: 'Cifre Minime (Pad):',
+        labelMax: 'Limite Massimo (Clamp):',
+        placeholderMax: 'Nessuno (es. 9999)',
+        labelInterpolate: 'Interpolazione Progressiva (rAF)',
+        labelDuration: 'Durata Animazione (ms):',
+        stressTitle: '⚡ Nx Performance Test (100 Numeri Simultanei)',
+        stressDesc: "Clicca sul pulsante per aggiornare simultaneamente 100 elementi <code>&lt;rolling-number&gt;</code> e verificare l'assenza di lag.",
+        btnStressRandomize: 'Aggiorna Tutti i 100 Numeri 🚀',
+        btnStressAutoStart: 'Auto Loop (Avvia)',
+        btnStressAutoStop: 'Auto Loop (Fermare)',
+      }
+    };
+
+    let currentLang = 'en';
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      const t = translations[lang];
+
+      document.getElementById('tSubtitle').innerHTML = t.subtitle;
+      document.getElementById('tDemoTitle').innerHTML = t.demoTitle;
+      document.getElementById('btnRand').textContent = t.btnRand;
+      document.getElementById('btnNeg').textContent = t.btnNeg;
+      document.getElementById('btnReset').textContent = t.btnReset;
+      document.getElementById('tLabelPad').textContent = t.labelPad;
+      document.getElementById('tLabelMax').textContent = t.labelMax;
+      document.getElementById('maxInput').placeholder = t.placeholderMax;
+      document.getElementById('tLabelInterpolate').textContent = t.labelInterpolate;
+      document.getElementById('tLabelDuration').textContent = t.labelDuration;
+      document.getElementById('tStressTitle').innerHTML = t.stressTitle;
+      document.getElementById('tStressDesc').innerHTML = t.stressDesc;
+      document.getElementById('btnStressRandomize').textContent = t.btnStressRandomize;
+
+      if (!autoTimer) {
+        btnStressAuto.textContent = t.btnStressAutoStart;
+      } else {
+        btnStressAuto.textContent = t.btnStressAutoStop;
+      }
+
+      document.getElementById('btnLangEN').classList.toggle('active', lang === 'en');
+      document.getElementById('btnLangIT').classList.toggle('active', lang === 'it');
+    }
+
+    document.getElementById('btnLangEN').addEventListener('click', () => setLanguage('en'));
+    document.getElementById('btnLangIT').addEventListener('click', () => setLanguage('it'));
+
     const heroCounter = document.getElementById('heroCounter');
     const btnInc = document.getElementById('btnInc');
     const btnDec = document.getElementById('btnDec');
@@ -286,6 +426,8 @@
     const btnReset = document.getElementById('btnReset');
     const padInput = document.getElementById('padInput');
     const maxInput = document.getElementById('maxInput');
+    const interpolateInput = document.getElementById('interpolateInput');
+    const durationInput = document.getElementById('durationInput');
 
     let currentValue = 1234;
 
@@ -296,7 +438,7 @@
     btnInc.addEventListener('click', () => { currentValue += 100; updateHero(); });
     btnDec.addEventListener('click', () => { currentValue -= 100; updateHero(); });
     btnRand.addEventListener('click', () => { currentValue = Math.floor(Math.random() * 9999); updateHero(); });
-    btnNeg.addEventListener('click', () => { currentValue = -Math.abs(currentValue || 123); updateHero(); });
+    btnNeg.addEventListener('click', () => { currentValue = -Math.abs(currentValue || 1234); updateHero(); });
     btnReset.addEventListener('click', () => { currentValue = 0; updateHero(); });
 
     padInput.addEventListener('input', (e) => {
@@ -304,8 +446,15 @@
     });
 
     maxInput.addEventListener('input', (e) => {
-      const val = e.target.value ? Number(e.target.value) : null;
-      heroCounter.max = val;
+      heroCounter.max = e.target.value ? Number(e.target.value) : null;
+    });
+
+    interpolateInput.addEventListener('change', (e) => {
+      heroCounter.interpolate = e.target.checked;
+    });
+
+    durationInput.addEventListener('input', (e) => {
+      heroCounter.duration = Number(e.target.value) || 400;
     });
 
     // Populate Nx Stress Test Grid with 100 elements
@@ -336,10 +485,10 @@
       if (autoTimer) {
         clearInterval(autoTimer);
         autoTimer = null;
-        btnStressAuto.textContent = 'Auto Loop (Start)';
+        btnStressAuto.textContent = translations[currentLang].btnStressAutoStart;
         btnStressAuto.style.background = '';
       } else {
-        btnStressAuto.textContent = 'Auto Loop (Stop 🛑)';
+        btnStressAuto.textContent = translations[currentLang].btnStressAutoStop;
         btnStressAuto.style.background = '#ef4444';
         autoTimer = setInterval(() => {
           stressElements.forEach(el => {

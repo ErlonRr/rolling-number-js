@@ -4,7 +4,7 @@ export class RollingNumberElement extends HTMLElement {
   private core: RollingNumberCore | null = null;
 
   static get observedAttributes(): string[] {
-    return ['value', 'pad', 'max'];
+    return ['value', 'pad', 'max', 'interpolate', 'duration'];
   }
 
   constructor() {
@@ -16,7 +16,9 @@ export class RollingNumberElement extends HTMLElement {
       this.core = new RollingNumberCore(this, {
         value: this.hasAttribute('value') ? Number(this.getAttribute('value')) : 0,
         pad: this.hasAttribute('pad') ? Number(this.getAttribute('pad')) : 1,
-        max: this.hasAttribute('max') ? Number(this.getAttribute('max')) : null
+        max: this.hasAttribute('max') ? Number(this.getAttribute('max')) : null,
+        interpolate: this.hasAttribute('interpolate') ? this.getAttribute('interpolate') !== 'false' : true,
+        duration: this.hasAttribute('duration') ? Number(this.getAttribute('duration')) : 400
       });
     }
   }
@@ -37,6 +39,10 @@ export class RollingNumberElement extends HTMLElement {
       this.core.setPad(newValue !== null ? Number(newValue) : 1);
     } else if (name === 'max') {
       this.core.setMax(newValue !== null ? Number(newValue) : null);
+    } else if (name === 'interpolate') {
+      this.core.setInterpolate(newValue !== 'false');
+    } else if (name === 'duration') {
+      this.core.setDuration(newValue !== null ? Number(newValue) : 400);
     }
   }
 
@@ -75,6 +81,32 @@ export class RollingNumberElement extends HTMLElement {
     }
     if (this.core) {
       this.core.setMax(val);
+    }
+  }
+
+  get interpolate(): boolean {
+    return this.hasAttribute('interpolate') ? this.getAttribute('interpolate') !== 'false' : true;
+  }
+
+  set interpolate(val: boolean) {
+    if (!val) {
+      this.setAttribute('interpolate', 'false');
+    } else {
+      this.removeAttribute('interpolate');
+    }
+    if (this.core) {
+      this.core.setInterpolate(val);
+    }
+  }
+
+  get duration(): number {
+    return this.hasAttribute('duration') ? Number(this.getAttribute('duration')) : 400;
+  }
+
+  set duration(val: number) {
+    this.setAttribute('duration', val.toString());
+    if (this.core) {
+      this.core.setDuration(val);
     }
   }
 }

@@ -15,7 +15,7 @@ export function useRollingNumber(
     } else {
       coreRef.current.update(options);
     }
-  }, [options.value, options.pad, options.max, ref]);
+  }, [options.value, options.pad, options.max, options.interpolate, options.duration, ref]);
 
   useEffect(() => {
     return () => {

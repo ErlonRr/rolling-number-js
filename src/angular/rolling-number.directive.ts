@@ -17,6 +17,8 @@ export class RollingNumberDirective implements OnInit, OnDestroy, OnChanges {
   @Input('rollingNumber') valueInput: number | string = 0;
   @Input() pad: number = 1;
   @Input() max: number | null = null;
+  @Input() interpolate: boolean = true;
+  @Input() duration: number = 400;
 
   private core: RollingNumberCore | null = null;
 
@@ -27,7 +29,9 @@ export class RollingNumberDirective implements OnInit, OnDestroy, OnChanges {
     this.core = new RollingNumberCore(targetEl, {
       value: Number(this.valueInput ?? 0),
       pad: Number(this.pad ?? 1),
-      max: this.max !== null && this.max !== undefined ? Number(this.max) : null
+      max: this.max !== null && this.max !== undefined ? Number(this.max) : null,
+      interpolate: this.interpolate,
+      duration: this.duration
     });
   }
 
@@ -48,6 +52,12 @@ export class RollingNumberDirective implements OnInit, OnDestroy, OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (!this.core) return;
 
+    if (changes['interpolate']) {
+      this.core.setInterpolate(changes['interpolate'].currentValue !== false);
+    }
+    if (changes['duration']) {
+      this.core.setDuration(Number(changes['duration'].currentValue ?? 400));
+    }
     if (changes['valueInput']) {
       this.core.setValue(Number(changes['valueInput'].currentValue ?? 0));
     }

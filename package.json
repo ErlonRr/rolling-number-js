@@ -1,6 +1,6 @@
 {
   "name": "rolling-number",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Ultra-fast, zero-dependency rolling number counter library, web component, and framework directives for Angular, React, and Vue.",
   "type": "module",
   "main": "./dist/rolling-number.cjs",
