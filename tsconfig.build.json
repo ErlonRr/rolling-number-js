@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "declaration": true,
+    "sourceMap": false,
+    "target": "ES2022",
+    "module": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "rootDir": "src",
+    "outDir": "node_modules/.cache/rolling-number/ngc"
+  },
+  "include": ["src"],
+  "angularCompilerOptions": {
+    "compilationMode": "partial",
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  }
+}

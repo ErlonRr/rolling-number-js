@@ -7,6 +7,7 @@
   "module": "./dist/rolling-number.js",
   "types": "./dist/index.d.ts",
   "style": "./dist/style.css",
+  "customElements": "./dist/custom-elements.json",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ErlonRr/rolling-number-js.git"
@@ -17,41 +18,119 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/rolling-number.js",
-      "require": "./dist/rolling-number.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/rolling-number.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/rolling-number.cjs"
+      }
     },
     "./register": {
-      "types": "./dist/register.d.ts",
-      "import": "./dist/register.js",
-      "require": "./dist/register.cjs"
+      "import": {
+        "types": "./dist/register.d.ts",
+        "default": "./dist/register.js"
+      },
+      "require": {
+        "types": "./dist/register.d.cts",
+        "default": "./dist/register.cjs"
+      }
     },
     "./angular": {
-      "types": "./dist/angular/index.d.ts",
-      "import": "./dist/angular.js",
-      "require": "./dist/angular.cjs"
+      "import": {
+        "types": "./dist/angular/index.d.ts",
+        "default": "./dist/angular.js"
+      },
+      "require": {
+        "types": "./dist/angular/index.d.cts",
+        "default": "./dist/angular.cjs"
+      }
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react.js",
-      "require": "./dist/react.cjs"
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react.cjs"
+      }
     },
     "./vue": {
-      "types": "./dist/vue/index.d.ts",
-      "import": "./dist/vue.js",
-      "require": "./dist/vue.cjs"
+      "import": {
+        "types": "./dist/vue/index.d.ts",
+        "default": "./dist/vue.js"
+      },
+      "require": {
+        "types": "./dist/vue/index.d.cts",
+        "default": "./dist/vue.cjs"
+      }
     },
-    "./style.css": "./dist/style.css"
+    "./jsx": {
+      "import": {
+        "types": "./dist/jsx.d.ts",
+        "default": "./dist/jsx.js"
+      },
+      "require": {
+        "types": "./dist/jsx.d.cts",
+        "default": "./dist/jsx.cjs"
+      }
+    },
+    "./vue-element": {
+      "import": {
+        "types": "./dist/vue-element.d.ts",
+        "default": "./dist/vue-element.js"
+      },
+      "require": {
+        "types": "./dist/vue-element.d.cts",
+        "default": "./dist/vue-element.cjs"
+      }
+    },
+    "./style.css": "./dist/style.css",
+    "./custom-elements.json": "./dist/custom-elements.json",
+    "./vscode.html-custom-data.json": "./dist/vscode.html-custom-data.json",
+    "./vscode.css-custom-data.json": "./dist/vscode.css-custom-data.json",
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "register": [
+        "./dist/register.d.ts"
+      ],
+      "angular": [
+        "./dist/angular/index.d.ts"
+      ],
+      "react": [
+        "./dist/react/index.d.ts"
+      ],
+      "vue": [
+        "./dist/vue/index.d.ts"
+      ],
+      "jsx": [
+        "./dist/jsx.d.ts"
+      ],
+      "vue-element": [
+        "./dist/vue-element.d.ts"
+      ]
+    }
   },
   "files": [
-    "dist",
-    "assets"
+    "dist"
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && pnpm run build:ngc && vite build && node scripts/build-types.mjs && pnpm run cem",
+    "build:ngc": "node -e \"fs.rmSync('node_modules/.cache/rolling-number/ngc',{recursive:true,force:true})\" && ngc -p tsconfig.build.json",
+    "cem": "cem analyze --config custom-elements-manifest.config.mjs && node scripts/vscode-custom-data.mjs",
     "build:demo": "vite build --config vite.config.demo.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "check:ng-aot": "node scripts/ng-aot-check.mjs",
+    "lint:pkg": "publint && attw --pack . --profile node16 --exclude-entrypoints ./style.css",
+    "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test && pnpm run smoke && pnpm run check:ng-aot && pnpm run lint:pkg"
   },
   "keywords": [
     "rolling-number",
@@ -68,22 +147,36 @@
   "author": "Erlon Rr",
   "license": "MIT",
   "devDependencies": {
+    "@angular/common": "^18.0.0",
+    "@angular/compiler": "^18.0.0",
+    "@angular/compiler-cli": "^18.0.0",
     "@angular/core": "^18.0.0",
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@custom-elements-manifest/analyzer": "^0.11.0",
+    "@types/node": "^26.6.4",
     "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.7",
+    "happy-dom": "^20.14.6",
+    "publint": "^0.3.25",
     "react": "^18.3.0",
+    "react-dom": "^18.3.1",
     "rxjs": "^7.8.0",
-    "typescript": "^5.4.0",
+    "typescript": "~5.5.4",
     "vite": "^5.2.0",
-    "vite-plugin-dts": "^3.8.0",
+    "vitest": "^3.2.7",
     "vue": "^3.4.0",
     "zone.js": "^0.14.0"
   },
   "peerDependencies": {
+    "@angular/common": ">=16.0.0",
     "@angular/core": ">=16.0.0",
     "react": ">=16.8.0",
     "vue": ">=3.0.0"
   },
   "peerDependenciesMeta": {
+    "@angular/common": {
+      "optional": true
+    },
     "@angular/core": {
       "optional": true
     },
