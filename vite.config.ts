@@ -38,6 +38,9 @@ function angularPartialCompilation(): Plugin {
 }
 
 export default defineConfig({
+  // Escape non-ASCII characters (the decorator's U+2060/U+2007, the U+2212
+  // minus) so dist/ decodes correctly even when served without a UTF-8 charset.
+  esbuild: { charset: 'ascii' },
   build: {
     lib: {
       entry: {
