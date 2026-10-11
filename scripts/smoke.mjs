@@ -6,6 +6,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkManifest } from './smoke-manifest.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -36,8 +37,15 @@ function assert(cond, message) {
 
 /** Named exports every entry must provide. */
 const expectedExports = {
-  '.': ['RollingNumberCore', 'RollingNumberElement', 'defineRollingNumber'],
+  '.': [
+    'RollingNumberCore', 'RollingNumberElement', 'defineRollingNumber', 'rollingNumber',
+    'configureRollingNumber', 'injectRollingNumberStyles', 'renderStaticText', 'renderStaticHTML'
+  ],
   './register': ['RollingNumberElement'],
+  './action': ['RollingNumberCore', 'rollingNumber', 'configureRollingNumber', 'injectRollingNumberStyles'],
+  './ssr': ['renderStaticText', 'renderStaticHTML'],
+  // Script-tag build (global RollingNumber): checked with import() only; it has no ES exports.
+  './iife': [],
   './angular': ['RollingNumberDirective'],
   './react': ['RollingNumber', 'useRollingNumber'],
   './vue': ['RollingNumber', 'vRollingNumber'],
@@ -64,6 +72,9 @@ for (const subpath of codeEntries) {
     const mod = await import(specifier);
     for (const name of expectedExports[subpath]) assert(name in mod, `missing export ${name}`);
   });
+
+  // The IIFE is a classic script: no "require" condition.
+  if (subpath === './iife') continue;
 
   check(`require('${specifier}')`, () => {
     let mod;
@@ -94,30 +105,8 @@ check(`'${pkg.name}/style.css' and '${pkg.name}/package.json' resolve`, () => {
 
 const dist = (file) => readFileSync(join(root, 'dist', file), 'utf8');
 
-check('custom-elements.json describes <rolling-number> (attributes, properties, CSS custom properties)', () => {
-  assert(pkg.customElements, 'package.json has no "customElements" field');
-  const manifest = JSON.parse(readFileSync(join(root, pkg.customElements), 'utf8'));
-  assert(require(`${pkg.name}/custom-elements.json`).schemaVersion === manifest.schemaVersion, 'export does not match "customElements"');
-  const el = manifest.modules.flatMap((m) => m.declarations).find((d) => d.tagName === 'rolling-number');
-  assert(el && el.customElement, 'no custom element declaration with tagName rolling-number');
-  const options = ['value', 'pad', 'max', 'interpolate', 'duration'];
-  const names = (list) => (list ?? []).map((x) => x.name).sort().join(',');
-  assert(names(el.attributes) === [...options].sort().join(','), `attributes: ${names(el.attributes)}`);
-  for (const attr of el.attributes) assert(attr.fieldName === attr.name, `attribute ${attr.name} not linked to its property`);
-  const props = el.members.filter((m) => m.kind === 'field' && !m.privacy && !m.static);
-  assert(names(props) === [...options].sort().join(','), `public properties: ${names(props)}`);
-  assert(names(el.cssProperties) === '--rn-duration,--rn-easing,--rn-lh', `cssProperties: ${names(el.cssProperties)}`);
-  const defined = manifest.modules.some((m) => (m.exports ?? []).some((e) => e.kind === 'custom-element-definition' && e.name === 'rolling-number'));
-  assert(defined, 'no custom-element-definition export for rolling-number');
-});
-
-check('VS Code custom data lists <rolling-number> and the --rn-* custom properties', () => {
-  const html = require(`${pkg.name}/vscode.html-custom-data.json`);
-  const tag = html.tags.find((t) => t.name === 'rolling-number');
-  assert(tag && tag.attributes.length === 5, 'rolling-number tag with 5 attributes missing');
-  const css = require(`${pkg.name}/vscode.css-custom-data.json`);
-  assert(css.properties.some((p) => p.name === '--rn-duration'), '--rn-duration missing');
-});
+// Custom Elements Manifest and VS Code custom data (owned by the element work package).
+checkManifest({ check, assert, require, root, pkg });
 
 check('dist/react.js is a small client module without a bundled jsx-runtime', () => {
   const code = dist('react.js');

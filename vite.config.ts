@@ -43,6 +43,9 @@ export default defineConfig({
       entry: {
         'rolling-number': resolve(__dirname, 'src/index.ts'),
         'register': resolve(__dirname, 'src/register.ts'),
+        // Side-effect-free core + action, and the DOM-free SSR helpers.
+        'action': resolve(__dirname, 'src/action-entry.ts'),
+        'ssr': resolve(__dirname, 'src/ssr-entry.ts'),
         'angular': ngcAngularEntry,
         'react': resolve(__dirname, 'src/react/index.ts'),
         'vue': resolve(__dirname, 'src/vue/index.ts')

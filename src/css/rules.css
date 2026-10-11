@@ -1,0 +1,107 @@
+/* WP0 copy of the 1.2 rules (without :root). Owned by WP3, which rewrites it per docs/design/v1.3.md §4.3. */
+/*
+ * --rn-lh (default 1) sets the digit window height in multiples of the font size.
+ * Heights use calc(var(--rn-lh) * 1em) as a fallback for browsers without `lh`
+ * support, then 1lh so the window always matches the line-height of the cells.
+ * The cells keep line-height: var(--rn-lh) on the fallback path, so window and
+ * line box always agree there; only browsers with `lh` support (see the
+ * @supports block below) also follow a line-height set directly on the root.
+ */
+.rn-rolling-number {
+  display: inline-flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--rn-lh, 1);
+  direction: ltr;
+  unicode-bidi: isolate;
+  user-select: none;
+  vertical-align: baseline;
+}
+
+.rn-interpolating .rn-scale,
+.rn-interpolating .rn-sign,
+[data-rn-state="animating"] .rn-scale,
+[data-rn-state="animating"] .rn-sign {
+  transition: none !important;
+}
+
+.rn-sign {
+  display: inline-block;
+  line-height: var(--rn-lh, 1);
+  transition: opacity var(--rn-duration) var(--rn-easing);
+  margin-right: 0.05em;
+}
+
+.rn-col {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  display: inline-block;
+  height: calc(var(--rn-lh, 1) * 1em);
+  height: 1lh;
+}
+
+.rn-sizer {
+  visibility: hidden;
+  display: block;
+  line-height: var(--rn-lh, 1);
+  font-variant-numeric: tabular-nums;
+  height: calc(var(--rn-lh, 1) * 1em);
+  height: 1lh;
+  pointer-events: none;
+}
+
+.rn-scale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--rn-duration) var(--rn-easing);
+}
+
+.rn-interpolating .rn-scale,
+[data-rn-state="animating"] .rn-scale {
+  will-change: transform;
+}
+
+.rn-cell {
+  display: block;
+  text-align: center;
+  line-height: var(--rn-lh, 1);
+  font-variant-numeric: tabular-nums;
+  height: calc(var(--rn-lh, 1) * 1em);
+  height: 1lh;
+}
+
+/*
+ * With `lh` support the window height follows the line-height of the cells, so
+ * they can inherit it from the root (e.g. style="line-height: 1.5" on the host).
+ */
+@supports (height: 1lh) {
+  .rn-sign,
+  .rn-sizer,
+  .rn-cell {
+    line-height: inherit;
+  }
+}
+
+/* CSS Transform positions for digits 0-9 */
+.rn-col[data-digit="0"] > .rn-scale { transform: translateY(0%); }
+.rn-col[data-digit="1"] > .rn-scale { transform: translateY(-10%); }
+.rn-col[data-digit="2"] > .rn-scale { transform: translateY(-20%); }
+.rn-col[data-digit="3"] > .rn-scale { transform: translateY(-30%); }
+.rn-col[data-digit="4"] > .rn-scale { transform: translateY(-40%); }
+.rn-col[data-digit="5"] > .rn-scale { transform: translateY(-50%); }
+.rn-col[data-digit="6"] > .rn-scale { transform: translateY(-60%); }
+.rn-col[data-digit="7"] > .rn-scale { transform: translateY(-70%); }
+.rn-col[data-digit="8"] > .rn-scale { transform: translateY(-80%); }
+.rn-col[data-digit="9"] > .rn-scale { transform: translateY(-90%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rn-scale,
+  .rn-sign {
+    transition: none !important;
+  }
+}

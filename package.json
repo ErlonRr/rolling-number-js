@@ -8,6 +8,8 @@
   "types": "./dist/index.d.ts",
   "style": "./dist/style.css",
   "customElements": "./dist/custom-elements.json",
+  "unpkg": "./dist/rolling-number.iife.js",
+  "jsdelivr": "./dist/rolling-number.iife.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ErlonRr/rolling-number-js.git"
@@ -37,6 +39,27 @@
         "default": "./dist/register.cjs"
       }
     },
+    "./action": {
+      "import": {
+        "types": "./dist/action-entry.d.ts",
+        "default": "./dist/action.js"
+      },
+      "require": {
+        "types": "./dist/action-entry.d.cts",
+        "default": "./dist/action.cjs"
+      }
+    },
+    "./ssr": {
+      "import": {
+        "types": "./dist/ssr-entry.d.ts",
+        "default": "./dist/ssr.js"
+      },
+      "require": {
+        "types": "./dist/ssr-entry.d.cts",
+        "default": "./dist/ssr.cjs"
+      }
+    },
+    "./iife": "./dist/rolling-number.iife.js",
     "./angular": {
       "import": {
         "types": "./dist/angular/index.d.ts",
@@ -98,6 +121,12 @@
       "register": [
         "./dist/register.d.ts"
       ],
+      "action": [
+        "./dist/action-entry.d.ts"
+      ],
+      "ssr": [
+        "./dist/ssr-entry.d.ts"
+      ],
       "angular": [
         "./dist/angular/index.d.ts"
       ],
@@ -120,16 +149,19 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && pnpm run build:ngc && vite build && node scripts/build-types.mjs && pnpm run cem",
+    "build": "tsc && pnpm run build:ngc && vite build && vite build -c vite.config.iife.ts && node scripts/build-types.mjs && pnpm run cem",
     "build:ngc": "node -e \"fs.rmSync('node_modules/.cache/rolling-number/ngc',{recursive:true,force:true})\" && ngc -p tsconfig.build.json",
     "cem": "cem analyze --config custom-elements-manifest.config.mjs && node scripts/vscode-custom-data.mjs",
     "build:demo": "vite build --config vite.config.demo.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:visual": "playwright test",
     "smoke": "node scripts/smoke.mjs",
+    "size": "node scripts/size.mjs",
     "check:ng-aot": "node scripts/ng-aot-check.mjs",
-    "lint:pkg": "publint && attw --pack . --profile node16 --exclude-entrypoints ./style.css",
+    "check:vue-types": "vue-tsc --noEmit -p tests/vue-types",
+    "lint:pkg": "publint && attw --pack . --profile node16 --exclude-entrypoints ./style.css ./iife",
     "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test && pnpm run smoke && pnpm run check:ng-aot && pnpm run lint:pkg"
   },
   "keywords": [
@@ -153,9 +185,11 @@
     "@angular/core": "^18.0.0",
     "@arethetypeswrong/cli": "^0.18.5",
     "@custom-elements-manifest/analyzer": "^0.11.0",
+    "@playwright/test": "~1.64.0",
     "@types/node": "^26.6.4",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.21.5",
     "happy-dom": "^20.14.6",
     "publint": "^0.3.25",
     "react": "^18.3.0",
@@ -165,6 +199,7 @@
     "vite": "^5.2.0",
     "vitest": "^3.2.7",
     "vue": "^3.4.0",
+    "vue-tsc": "^3.3.13",
     "zone.js": "^0.14.0"
   },
   "peerDependencies": {

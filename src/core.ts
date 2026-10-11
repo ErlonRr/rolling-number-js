@@ -1,94 +1,32 @@
 import './rolling-number.css';
+import type {
+  RollingNumberEventDetail,
+  RollingNumberOptions,
+  RollingNumberSetValueOptions,
+  RollingNumberSettled,
+  RollingNumberUpdate
+} from './types';
+import type { NormalizedOptions, OptionKey } from './internal/contracts';
+import {
+  OPTION_KEYS,
+  normalizeField,
+  normalizeInterpolate,
+  normalizeMax,
+  normalizeMaxExact,
+  normalizePad,
+  normalizeValue,
+  resolveOptions,
+  toNumber
+} from './options';
+
+export type { RollingNumberOptions, RollingNumberUpdate } from './types';
 
 /**
- * Options accepted by {@link RollingNumberCore} and by every framework adapter
- * (`<RollingNumber>` for React/Vue, `v-rolling-number`, the Angular
- * `[rollingNumber]` directive and the `<rolling-number>` custom element, whose
- * attributes have the same names).
- *
- * Every field is optional. Invalid input never throws: it is normalized as
- * described on each field (see also {@link normalizeOptions}).
- *
- * @example
- * ```ts
- * import { RollingNumberCore } from 'rolling-number';
- * import 'rolling-number/style.css';
- *
- * const counter = new RollingNumberCore(document.querySelector('#badge')!, {
- *   value: 0,
- *   pad: 2,        // always show at least 2 digits: "07"
- *   max: 99,       // never display more than 99
- *   interpolate: true,
- *   duration: 600  // ms
- * });
- * counter.setValue(42);
- * ```
- */
-export interface RollingNumberOptions {
-  /**
-   * The number to display (the target value).
-   *
-   * Decimals are accepted but the display shows the integer rounded
-   * symmetrically around zero (`1.5` → `2`, `-1.5` → `-2`). Negative values
-   * show a leading minus sign.
-   * Non-finite input (`NaN`, `Infinity`, non-numeric strings) becomes `0`; the
-   * magnitude is clamped to `Number.MAX_SAFE_INTEGER`.
-   *
-   * @default 0
-   */
-  value?: number;
-  /**
-   * Minimum number of digit columns: shorter numbers are padded with leading
-   * zeros (`pad: 3` shows `7` as `007`). Longer numbers are never truncated.
-   *
-   * Range `1..64`: non-finite or `< 1` → `1`, decimals are floored, values
-   * above 64 are clamped to 64.
-   *
-   * @default 1
-   */
-  pad?: number;
-  /**
-   * Upper bound of the displayed absolute value, e.g. `99` for a notification
-   * badge (the target value itself is kept; only the display is clamped).
-   * `null` means no limit.
-   *
-   * `null`, `undefined`, `''`, negative or non-finite input → `null`
-   * (no limit); other values are floored.
-   *
-   * @default null
-   */
-  max?: number | null;
-  /**
-   * Whether value changes count through the intermediate numbers
-   * (`1 → 2 → … → 50`) over {@link RollingNumberOptions.duration | duration}
-   * milliseconds. When `false`, the digits jump straight to the new value
-   * (each column still rolls with the CSS transition `--rn-duration`).
-   *
-   * Interpolation is also skipped when the user prefers reduced motion.
-   * `null`/`undefined` → `true` (the default), the string `'false'` → `false`,
-   * other values use `Boolean()`.
-   *
-   * @default true
-   */
-  interpolate?: boolean;
-  /**
-   * Duration of the interpolation, in **milliseconds** (only used when
-   * {@link RollingNumberOptions.interpolate | interpolate} is `true`).
-   * `0` disables the interpolation.
-   *
-   * Negative input → `0` (no interpolation). Non-finite input → `400` when
-   * passed to the constructor or {@link normalizeOptions};
-   * {@link RollingNumberCore.setDuration} and `update()` keep the previous
-   * duration instead.
-   *
-   * @default 400
-   */
-  duration?: number;
-}
-
-/**
- * Default option values shared by the core and every framework adapter:
+ * Default values of the five 1.x options:
  * `{ value: 0, pad: 1, max: null, interpolate: true, duration: 400 }`.
+ *
+ * Compatibility shim kept with its 1.2 shape; 1.3 code uses the internal
+ * `RN_DEFAULTS_13` (every option, `null` = auto).
  */
 export const RN_DEFAULTS: Readonly<{
   value: number;
@@ -97,9 +35,6 @@ export const RN_DEFAULTS: Readonly<{
   interpolate: boolean;
   duration: number;
 }> = Object.freeze({ value: 0, pad: 1, max: null, interpolate: true, duration: 400 });
-
-/** Upper bound for `pad`, prevents runaway DOM creation (e.g. pad=20000). */
-const MAX_PAD = 64;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -116,56 +51,19 @@ const instances = new WeakMap<Element, RollingNumberCore>();
 const warnedHosts = new WeakSet<Element>();
 
 /**
- * Converts loose input to a number. null, undefined, blank strings and
- * non-coercible values (symbols, throwing valueOf) become NaN.
- */
-function toNumber(input: unknown): number {
-  if (input === null || input === undefined) return NaN;
-  if (typeof input === 'number') return input;
-  if (typeof input === 'string') return input.trim() === '' ? NaN : Number(input);
-  try {
-    return Number(input);
-  } catch {
-    return NaN;
-  }
-}
-
-function normalizeValue(input: unknown): number {
-  const n = toNumber(input);
-  if (!Number.isFinite(n)) return RN_DEFAULTS.value;
-  if (n > Number.MAX_SAFE_INTEGER) return Number.MAX_SAFE_INTEGER;
-  if (n < -Number.MAX_SAFE_INTEGER) return -Number.MAX_SAFE_INTEGER;
-  return n;
-}
-
-function normalizePad(input: unknown): number {
-  const n = toNumber(input);
-  if (!Number.isFinite(n) || n < 1) return RN_DEFAULTS.pad;
-  return Math.min(MAX_PAD, Math.floor(n));
-}
-
-function normalizeMax(input: unknown): number | null {
-  const n = toNumber(input);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.floor(n);
-}
-
-function normalizeInterpolate(input: unknown, fallback: boolean): boolean {
-  if (input === null || input === undefined) return fallback;
-  if (input === 'false') return false;
-  return Boolean(input);
-}
-
-/**
  * Rounds symmetrically around zero (-1.5 → -2, 1.5 → 2), as the display does.
  */
 function toDisplayInteger(n: number): number {
   return Math.sign(n) * Math.round(Math.abs(n));
 }
 
+/** Runs `fn` in a microtask (Promise fallback for old engines). */
+const microtask: (fn: () => void) => void =
+  typeof queueMicrotask === 'function' ? (fn) => queueMicrotask(fn) : (fn) => void Promise.resolve().then(fn);
+
 /**
- * Normalizes a (possibly partial or loosely typed) options object to valid values.
- * Missing, undefined or null fields fall back to `RN_DEFAULTS`.
+ * Normalizes the five 1.x options of a (possibly partial or loosely typed)
+ * options object. Missing, undefined or null fields fall back to `RN_DEFAULTS`.
  *
  * - `value`: non-finite → 0, magnitude clamped to `Number.MAX_SAFE_INTEGER`.
  * - `pad`: non-finite or < 1 → 1, floored, clamped to 64.
@@ -173,8 +71,11 @@ function toDisplayInteger(n: number): number {
  * - `interpolate`: null/undefined → true, the string 'false' → false, otherwise Boolean.
  * - `duration`: non-finite → 400, negative → 0 (no interpolation).
  *
+ * Compatibility shim kept with its 1.2 signature; the 1.3 options are not
+ * part of its result.
+ *
  * @param o Options to normalize; `null`/`undefined` yield the defaults.
- * @returns A new object with every option set to a valid value.
+ * @returns A new object with the five 1.x options set to valid values.
  *
  * @example
  * ```ts
@@ -182,7 +83,13 @@ function toDisplayInteger(n: number): number {
  * // → { value: 0, pad: 3, max: null, interpolate: true, duration: 400 }
  * ```
  */
-export function normalizeOptions(o: RollingNumberOptions | undefined | null): Required<RollingNumberOptions> {
+export function normalizeOptions(o: RollingNumberOptions | undefined | null): {
+  value: number;
+  pad: number;
+  max: number | null;
+  interpolate: boolean;
+  duration: number;
+} {
   const src = (o ?? {}) as Record<string, unknown>;
   const duration = toNumber(src.duration);
   return {
@@ -195,13 +102,22 @@ export function normalizeOptions(o: RollingNumberOptions | undefined | null): Re
 }
 
 /**
- * Live (normalized) interpolation duration of a core instance, used by the
- * `<rolling-number>` element so its `duration` getter reports what the core
- * actually uses. Not part of the public package API.
+ * Live (normalized) counting duration of a core instance (400 when unset),
+ * used by the `<rolling-number>` element so its `duration` getter reports
+ * what the core actually uses. Not part of the public package API.
  * @internal
  */
 export function getCoreDuration(core: RollingNumberCore): number {
-  return core['duration'];
+  return core['opts'].duration ?? RN_DEFAULTS.duration;
+}
+
+/**
+ * Normalized options of a core plus `f`, the resolved fraction digits. Used by
+ * the element getters and the adapters. Not part of the public package API.
+ * @internal
+ */
+export function getResolved(core: RollingNumberCore): Readonly<NormalizedOptions> & { readonly f: number } {
+  return core['resolved']();
 }
 
 /** Per-column DOM references cached to avoid DOM queries on every frame. */
@@ -211,18 +127,27 @@ interface DigitColumn {
   digit: string;
 }
 
+/** A promise waiting for a target to settle. */
+interface Waiter {
+  value: number;
+  resolve: (settled: RollingNumberSettled) => void;
+}
+
 /**
  * Framework-agnostic engine that renders an animated, odometer-style number
- * inside a host element. All framework adapters and the `<rolling-number>`
- * custom element are thin wrappers around it.
+ * inside a host element. All framework adapters, the `rollingNumber()` action
+ * and the `<rolling-number>` custom element are thin wrappers around it.
  *
  * The core appends its own nodes to the host (`.rn-sign` and one `.rn-col`
  * per digit) and leaves other children alone. It also sets `role="img"`, an
  * `aria-label` with the target value and the `rn-rolling-number` class on the
- * host. While an interpolation runs the host carries
- * `data-rn-state="animating"` (and the legacy `rn-interpolating` class).
+ * host. While a motion runs the host carries `data-rn-state="animating"`
+ * (and the legacy `rn-interpolating` class).
  *
- * Import `rolling-number/style.css` once for the digit columns to render.
+ * Every change dispatches `rn-start` and `rn-end` on the host
+ * ({@link RollingNumberEventMap}); `setValue()` returns a promise that
+ * resolves when the target settles.
+ *
  * Only one core can drive a given host: constructing a second one on the same
  * element destroys the first. Call {@link RollingNumberCore.destroy} when the
  * host goes away.
@@ -235,21 +160,19 @@ interface DigitColumn {
  * const el = document.querySelector<HTMLElement>('#counter')!;
  * const counter = new RollingNumberCore(el, { value: 0, pad: 3 });
  *
- * counter.setValue(250);         // counts 0 → 250 in 400 ms
- * counter.setValue(10, false);   // jumps straight to 10
+ * await counter.setValue(250);   // counts 0 → 250, resolves when settled
+ * counter.setValue(10, false);   // rolls each digit straight to 10
  * counter.update({ max: 99, duration: 800 });
+ * el.addEventListener('rn-end', (e) => console.log(e.detail.value));
  * counter.destroy();             // restores the host as it was
  * ```
  */
 export class RollingNumberCore {
-  private container: HTMLElement;
+  private container: HTMLElement | SVGElement;
   private doc: Document;
+  private opts: NormalizedOptions;
   private value: number;
   private displayValue: number;
-  private pad: number;
-  private max: number | null;
-  private interpolate: boolean;
-  private duration: number;
 
   private signEl: HTMLSpanElement | null = null;
   private digitCols: DigitColumn[] = [];
@@ -266,18 +189,27 @@ export class RollingNumberCore {
   private prevAriaLabel: string | null = null;
   private addedRootClass = false;
 
+  /** Promises waiting for the current target. */
+  private waiters: Waiter[] = [];
+  /** `rn-start` was dispatched and `rn-end` is still due. */
+  private sessionOpen = false;
+  /** Value on screen when the open session started. */
+  private sessionFrom = 0;
+  /** Incremented by every change: stale frames and microtasks compare it. */
+  private epoch = 0;
+
   /**
    * Attaches a rolling number to `container` and renders the initial value
-   * synchronously (no animation on first render).
+   * synchronously (no animation and no events on first render).
    *
    * @param container Host element. Use a container element such as `<span>`
    *   or `<div>`; void/replaced elements (`<input>`, `<img>`, `<svg>`, …)
    *   cannot display children and trigger a console warning.
-   * @param options Initial options; missing fields use the defaults
-   *   (`value 0`, `pad 1`, `max null`, `interpolate true`, `duration 400`).
+   * @param options Initial options; missing or `null` fields use the defaults
+   *   (`value 0`, `pad 1`, `max null`, `interpolate true`, `duration` auto).
    * @throws {Error} When `container` is not an element.
    */
-  constructor(container: HTMLElement, options: RollingNumberOptions = {}) {
+  constructor(container: HTMLElement | SVGElement, options: RollingNumberUpdate = {}) {
     const host = container as unknown as Partial<Element> | null | undefined;
     // Realm-safe check: works for elements coming from iframes or other windows.
     if (
@@ -295,15 +227,11 @@ export class RollingNumberCore {
       previous.destroy();
     }
 
-    const opts = normalizeOptions(options);
+    this.opts = resolveOptions(options);
     this.container = container;
     this.doc = container.ownerDocument;
-    this.value = opts.value;
+    this.value = this.opts.value;
     this.displayValue = this.value;
-    this.pad = opts.pad;
-    this.max = opts.max;
-    this.interpolate = opts.interpolate;
-    this.duration = opts.duration;
 
     instances.set(container, this);
     this.warnIfUnsupportedHost();
@@ -394,20 +322,26 @@ export class RollingNumberCore {
     }
   }
 
+  /** `max` as the display uses it (floored), or null. */
+  private displayMax(): number | null {
+    return this.opts.max === null ? null : Math.floor(this.opts.max);
+  }
+
   /**
    * Calculates the clamped positive integer display value.
    */
-  private getDisplayValue(): number {
+  private displayMagnitude(): number {
     const absVal = Math.round(Math.abs(this.displayValue));
-    return this.max !== null ? Math.min(absVal, this.max) : absVal;
+    const max = this.displayMax();
+    return max !== null ? Math.min(absVal, max) : absVal;
   }
 
   /**
    * Returns array of single digit characters zero-padded to `pad` length.
    */
   private getDisplayDigits(): string[] {
-    const str = this.getDisplayValue().toString();
-    const targetLength = Math.max(this.pad, str.length);
+    const str = this.displayMagnitude().toString();
+    const targetLength = Math.max(this.opts.pad, str.length);
     return str.padStart(targetLength, '0').split('');
   }
 
@@ -516,70 +450,157 @@ export class RollingNumberCore {
     }
   }
 
+  /** A promise for `value` that resolves with the next settle (or supersede/destroy). */
+  private wait(value: number): Promise<RollingNumberSettled> {
+    return new Promise((resolve) => {
+      this.waiters.push({ value, resolve });
+    });
+  }
+
+  /** Resolves `{ completed: false }` for every waiter whose target is not `keep`. */
+  private supersede(keep: number): void {
+    const stale = this.waiters.filter((w) => w.value !== keep);
+    this.waiters = this.waiters.filter((w) => w.value === keep);
+    for (const w of stale) w.resolve({ value: w.value, completed: false });
+  }
+
+  /** Removes and returns the waiters (resolved by the caller after dispatching `rn-end`). */
+  private takeWaiters(): Waiter[] {
+    const taken = this.waiters;
+    this.waiters = [];
+    return taken;
+  }
+
+  /** Dispatches `rn-start` / `rn-end` on the host (bubbles, composed). */
+  private dispatch(type: 'rn-start' | 'rn-end', detail: RollingNumberEventDetail): void {
+    const view = this.doc.defaultView as (Window & typeof globalThis) | null;
+    const Ctor = view?.CustomEvent ?? (typeof CustomEvent === 'function' ? CustomEvent : null);
+    if (!Ctor) return;
+    this.container.dispatchEvent(new Ctor(type, { detail, bubbles: true, composed: true }));
+  }
+
+  /** Ends the current session: `rn-start` if it never fired, then `rn-end`, then the promises. */
+  private settle(from: number, animated: boolean): void {
+    const value = this.value;
+    const done = this.takeWaiters();
+    if (!this.sessionOpen) {
+      this.dispatch('rn-start', { value, from, animated });
+    }
+    this.sessionOpen = false;
+    this.dispatch('rn-end', { value, from: animated ? this.sessionFrom : from, animated });
+    for (const w of done) w.resolve({ value: w.value, completed: w.value === value });
+  }
+
+  /** Instant change: events and promises follow in a microtask (coalesced with later changes). */
+  private settleInstantly(from: number): void {
+    const epoch = ++this.epoch;
+    const sessionFrom = this.sessionOpen ? this.sessionFrom : from;
+    microtask(() => {
+      if (this.destroyed || epoch !== this.epoch) return;
+      this.sessionFrom = sessionFrom;
+      this.settle(sessionFrom, false);
+    });
+  }
+
   /**
-   * Updates the displayed numeric value with optional progressive interpolation.
-   * Loose input is normalized (non-finite → 0). Animation is skipped when the
-   * user prefers reduced motion.
+   * Updates the displayed value, animated or not, and resolves when the
+   * target settles. Loose input is normalized (non-finite → 0). Every change
+   * is instant when the user prefers reduced motion.
    *
-   * A call during a running interpolation restarts it from the number currently
-   * on screen. `aria-label` switches to the new target immediately.
+   * A call during a running motion restarts it from the value on screen;
+   * `aria-label` switches to the new target immediately. Setting the target
+   * already in flight joins that motion (same outcome, no events).
    *
    * @param value New target value (see {@link RollingNumberOptions.value}).
-   * @param animate Count through the intermediate numbers. Defaults to the
-   *   current `interpolate` option.
+   * @param animate `true`: count through the intermediate values; `false`:
+   *   roll each digit straight to its new digit; or per-call options
+   *   ({@link RollingNumberSetValueOptions}). Defaults to the `interpolate` option.
+   * @returns Resolves `{ value, completed: true }` when the display settles on
+   *   `value`, `{ completed: false }` when superseded by another target or
+   *   destroyed. Never rejects.
    *
    * @example
    * ```ts
-   * counter.setValue(1200);        // animated if interpolate is true
-   * counter.setValue(0, false);    // immediate
+   * counter.setValue(1200);                          // animated if interpolate is true
+   * counter.setValue(0, false);                      // rolls straight to 0
+   * counter.setValue(5, { motion: 'none' });         // instant
+   * const { completed } = await counter.setValue(42, { duration: 1200, easing: 'ease-out-expo' });
    * ```
    */
-  public setValue(value: number, animate: boolean = this.interpolate): void {
+  public setValue(value: number, animate?: boolean | RollingNumberSetValueOptions): Promise<RollingNumberSettled> {
     const targetVal = normalizeValue(value);
-    if (this.value === targetVal && this.displayValue === targetVal) return;
-
-    this.cancelFrame();
 
     if (this.destroyed) {
+      this.cancelFrame();
       this.value = targetVal;
       this.displayValue = targetVal;
-      return;
+      return Promise.resolve({ value: targetVal, completed: false });
     }
 
+    const call = typeof animate === 'object' && animate !== null ? animate : null;
+    const flag = typeof animate === 'boolean' ? animate : this.opts.interpolate;
+    const motion = call?.motion ?? (flag ? 'count' : 'roll');
+    const explicitTiming = call !== null && (call.duration !== undefined || call.easing !== undefined);
+    const callDuration = call?.duration !== undefined ? toNumber(call.duration) : NaN;
+    const duration = Number.isFinite(callDuration)
+      ? Math.max(0, callDuration)
+      : (this.opts.duration ?? RN_DEFAULTS.duration);
+
+    // Join: same target in flight, no explicit change of motion.
     if (
-      !animate ||
-      this.duration <= 0 ||
+      this.animFrameId !== null &&
+      targetVal === this.value &&
+      (animate === undefined || (motion === 'count' && !explicitTiming))
+    ) {
+      return this.wait(targetVal);
+    }
+
+    if (this.animFrameId === null && this.value === targetVal && this.displayValue === targetVal) {
+      return Promise.resolve({ value: targetVal, completed: true });
+    }
+
+    this.cancelFrame();
+    this.supersede(targetVal);
+    const promise = this.wait(targetVal);
+    const startVal = this.displayValue;
+
+    if (
+      motion !== 'count' ||
+      duration <= 0 ||
       typeof requestAnimationFrame !== 'function' ||
-      this.prefersReducedMotion()
+      this.prefersReducedMotion() ||
+      Math.abs(targetVal - startVal) < 0.001
     ) {
       this.setAnimatingState(false);
       this.value = targetVal;
       this.displayValue = targetVal;
       this.render();
-      return;
+      this.settleInstantly(startVal);
+      return promise;
     }
 
-    const startVal = this.displayValue;
     const delta = targetVal - startVal;
     this.value = targetVal;
-
-    if (Math.abs(delta) < 0.001) {
-      this.setAnimatingState(false);
-      this.displayValue = targetVal;
-      this.render();
-      return;
-    }
+    const epoch = ++this.epoch;
 
     this.setAnimatingState(true);
     this.render(); // keeps aria-label in sync with the new target immediately
-    const duration = this.duration;
     let startTime: number | null = null;
 
     const step = (now: number) => {
-      if (this.destroyed) return;
+      if (this.destroyed || epoch !== this.epoch) return;
       // Start from the first frame timestamp: avoids a negative elapsed time
       // when setValue runs after the frame's timestamp was taken.
-      if (startTime === null) startTime = now;
+      if (startTime === null) {
+        startTime = now;
+        if (!this.sessionOpen) {
+          this.sessionOpen = true;
+          this.sessionFrom = startVal;
+          this.dispatch('rn-start', { value: targetVal, from: startVal, animated: true });
+          // A listener may have changed the target or destroyed the core.
+          if (this.destroyed || epoch !== this.epoch) return;
+        }
+      }
       const raw = (now - startTime) / duration;
       const progress = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1;
 
@@ -596,17 +617,48 @@ export class RollingNumberCore {
         // never replay from the intermediate digits.
         this.displayValue = targetVal;
         this.render();
-        void this.container.offsetWidth;
+        void (this.container as HTMLElement).offsetWidth;
         this.setAnimatingState(false);
+        this.settle(startVal, true);
       }
     };
 
     this.animFrameId = requestAnimationFrame(step);
+    return promise;
   }
 
   /**
-   * Gets the current numeric target value (normalized, not rounded): during an
-   * interpolation this is already the final value, not the one on screen.
+   * Resolves when the current motion settles (immediately when idle).
+   *
+   * @returns `{ value, completed }` as for {@link RollingNumberCore.setValue}.
+   */
+  public whenSettled(): Promise<RollingNumberSettled> {
+    if (this.destroyed) return Promise.resolve({ value: this.value, completed: false });
+    if (this.animFrameId !== null || this.waiters.length > 0) return this.wait(this.value);
+    return Promise.resolve({ value: this.value, completed: true });
+  }
+
+  /**
+   * Jumps to the target now: final DOM, `rn-end`, pending promises resolve
+   * `{ completed: true }`. No-op when idle.
+   */
+  public finish(): void {
+    if (this.destroyed || this.animFrameId === null) return;
+    this.cancelFrame();
+    this.epoch++;
+    const from = this.sessionOpen ? this.sessionFrom : this.displayValue;
+    const animated = this.sessionOpen;
+    this.displayValue = this.value;
+    this.render();
+    void (this.container as HTMLElement).offsetWidth;
+    this.setAnimatingState(false);
+    this.settle(from, animated);
+  }
+
+  /**
+   * Gets the current numeric target value (normalized, not rounded): during a
+   * motion this is already the final value, not the one on screen
+   * (see {@link RollingNumberCore.getDisplayValue}).
    *
    * @returns The target value.
    */
@@ -615,26 +667,82 @@ export class RollingNumberCore {
   }
 
   /**
+   * Value on screen (signed, clamped by `max`; fractional mid-count).
+   *
+   * @returns The displayed value.
+   */
+  public getDisplayValue(): number {
+    const max = this.displayMax();
+    const v = this.displayValue;
+    return max !== null && Math.abs(v) > max ? Math.sign(v) * max : v;
+  }
+
+  /**
+   * Displayed text of the target at rest: clamped by `max`, with
+   * `overflowSuffix` and affixes, e.g. `"99+"` (what text mode shows).
+   *
+   * @returns The text of the target.
+   */
+  public getText(): string {
+    const o = this.opts;
+    const a = toDisplayInteger(this.value);
+    const max = this.displayMax();
+    const overflow = max !== null && Math.abs(a) > max;
+    const m = overflow ? (max as number) : Math.abs(a);
+    return (
+      o.prefixText +
+      (a < 0 && m !== 0 ? '-' : '') +
+      String(m).padStart(o.pad, '0') +
+      (overflow ? o.overflowSuffix : '') +
+      o.suffixText
+    );
+  }
+
+  /**
+   * Renderer in use after `mode: 'auto'` resolution.
+   *
+   * @returns `'columns'` or `'text'`.
+   */
+  public getMode(): 'columns' | 'text' {
+    return 'columns';
+  }
+
+  /**
    * Returns the host element this instance renders into.
+   *
+   * @returns The `container` passed to the constructor (typed `HTMLElement`
+   *   for 1.x compatibility; see {@link RollingNumberCore.getHost}).
+   */
+  public getElement(): HTMLElement {
+    return this.container as HTMLElement;
+  }
+
+  /**
+   * Returns the host as passed to the constructor (accurately typed).
    *
    * @returns The `container` passed to the constructor.
    */
-  public getElement(): HTMLElement {
+  public getHost(): HTMLElement | SVGElement {
     return this.container;
   }
 
   /**
-   * Whether a progressive interpolation is currently running (the host then
-   * carries `data-rn-state="animating"`).
+   * Whether a motion is currently running (the host then carries
+   * `data-rn-state="animating"`).
    *
-   * @returns `true` between the start and the last frame of an interpolation.
+   * @returns `true` between the start and the last frame of a motion.
    */
   public isAnimating(): boolean {
     return this.animFrameId !== null;
   }
 
+  /** @internal Normalized options plus the resolved fraction digits (see `getResolved`). */
+  private resolved(): Readonly<NormalizedOptions> & { readonly f: number } {
+    return Object.freeze({ ...this.opts, f: this.opts.decimals ?? 0 });
+  }
+
   /**
-   * Updates whether value changes are progressively interpolated.
+   * Updates whether value changes count through the intermediate values.
    * `null`/`undefined` → `true` (the default), the string 'false' → false,
    * other values use `Boolean()`. Applies to the next
    * {@link RollingNumberCore.setValue} call.
@@ -642,20 +750,24 @@ export class RollingNumberCore {
    * @param interpolate See {@link RollingNumberOptions.interpolate}.
    */
   public setInterpolate(interpolate: boolean): void {
-    this.interpolate = normalizeInterpolate(interpolate, RN_DEFAULTS.interpolate);
+    this.opts.interpolate = normalizeInterpolate(interpolate, RN_DEFAULTS.interpolate);
   }
 
   /**
-   * Updates the animation duration in milliseconds.
-   * Non-finite input keeps the current duration; negative values become 0.
-   * Applies to the next {@link RollingNumberCore.setValue} call.
+   * Updates the animation duration in milliseconds. `null` resets it to
+   * unset (auto); non-finite input keeps the current duration; negative
+   * values become 0. Applies to the next {@link RollingNumberCore.setValue} call.
    *
-   * @param duration Interpolation duration in ms (`0` disables it).
+   * @param duration Duration in ms (`0` disables counting), or `null` for auto.
    */
-  public setDuration(duration: number): void {
+  public setDuration(duration: number | null): void {
+    if (duration === null) {
+      this.opts.duration = null;
+      return;
+    }
     const n = toNumber(duration);
     if (!Number.isFinite(n)) return;
-    this.duration = Math.max(0, n);
+    this.opts.duration = Math.max(0, n);
   }
 
   /**
@@ -665,68 +777,76 @@ export class RollingNumberCore {
    */
   public setPad(pad: number): void {
     const newPad = normalizePad(pad);
-    if (this.pad === newPad) return;
-    this.pad = newPad;
+    if (this.opts.pad === newPad) return;
+    this.opts.pad = newPad;
     this.render();
   }
 
   /**
    * Updates the maximum clamped limit. null, undefined, '', negative or
-   * non-finite values remove the limit; other values are floored.
+   * non-finite values remove the limit.
    *
    * @param max Display clamp, or `null` for none (see {@link RollingNumberOptions.max}).
    */
   public setMax(max: number | null): void {
-    const newMax = normalizeMax(max);
-    if (this.max === newMax) return;
-    this.max = newMax;
+    const newMax = normalizeMaxExact(max);
+    if (this.opts.max === newMax) return;
+    this.opts.max = newMax;
     this.render();
   }
 
   /**
-   * Updates multiple options at once. Fields left undefined are unchanged.
-   * A changed `value` goes through {@link RollingNumberCore.setValue} (and is
-   * animated according to the new `interpolate`/`duration`).
+   * Updates multiple options at once. Fields left `undefined` are unchanged;
+   * `null` resets a field to its default. A changed `value` goes through
+   * {@link RollingNumberCore.setValue} last (animated according to the new
+   * `interpolate`/`duration`). `from` is creation-only and ignored here.
    *
    * @param options Partial options; each field is normalized like its setter.
    *
    * @example
    * ```ts
-   * counter.update({ value: 7, pad: 2 }); // max, interpolate, duration unchanged
+   * counter.update({ value: 7, pad: 2 }); // the other options are unchanged
+   * counter.update({ duration: null });   // back to the automatic duration
    * ```
    */
-  public update(options: RollingNumberOptions): void {
+  public update(options: RollingNumberUpdate): void {
     const o = (options ?? {}) as Record<string, unknown>;
-    if (o.pad !== undefined) {
-      this.pad = normalizePad(o.pad);
-    }
-    if (o.max !== undefined) {
-      this.max = normalizeMax(o.max);
-    }
-    if (o.interpolate !== undefined) {
-      this.interpolate = normalizeInterpolate(o.interpolate, RN_DEFAULTS.interpolate);
-    }
-    if (o.duration !== undefined) {
-      this.setDuration(o.duration as number);
+    for (const key of OPTION_KEYS) {
+      if (key === 'value' || key === 'from') continue;
+      let raw: unknown;
+      try {
+        raw = o[key];
+      } catch {
+        raw = undefined;
+      }
+      if (raw !== undefined) this.applyField(key, raw);
     }
 
     if (o.value !== undefined && this.value !== normalizeValue(o.value)) {
-      this.setValue(o.value as number);
+      void this.setValue(o.value as number);
     } else {
       this.render();
     }
   }
 
+  /** Normalizes and stores one option (`update()` semantics). */
+  private applyField<K extends OptionKey>(key: K, raw: unknown): void {
+    this.opts[key] = normalizeField(key, raw, this.opts);
+  }
+
   /**
    * Destroys the instance: cancels any running animation, removes only the
    * nodes created by the core and restores the host's previous role,
-   * aria-label and class. The instance is inert afterwards.
+   * aria-label and class. Pending promises resolve `{ completed: false }`;
+   * no event is dispatched. The instance is inert afterwards.
    * Calling it more than once is safe.
    */
   public destroy(): void {
     this.cancelFrame();
     if (this.destroyed) return;
     this.destroyed = true;
+    this.epoch++;
+    this.sessionOpen = false;
 
     const host = this.container;
     this.setAnimatingState(false);
@@ -759,5 +879,7 @@ export class RollingNumberCore {
     if (instances.get(host) === this) {
       instances.delete(host);
     }
+
+    for (const w of this.takeWaiters()) w.resolve({ value: w.value, completed: false });
   }
 }

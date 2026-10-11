@@ -1,0 +1,5 @@
+/* Default values of the public timing variables (dist/style.css only; the injected sheet uses var() fallbacks). */
+:root {
+  --rn-duration: 0.5s;
+  --rn-easing: cubic-bezier(0.2, 1, 0.3, 1);
+}

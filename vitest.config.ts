@@ -9,6 +9,11 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['tests/**/*.test.ts'],
+    // Playwright specs (pnpm test:visual) are not vitest tests.
+    exclude: ['tests/visual/**', 'node_modules/**'],
+    // Without this, `?inline` CSS imports resolve to "" in tests and every
+    // injected stylesheet would be empty.
+    css: { include: [/rules\.css/] },
     restoreMocks: true,
     unstubGlobals: true,
     typecheck: {
