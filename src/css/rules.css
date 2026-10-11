@@ -1,93 +1,68 @@
-/* WP0 copy of the 1.2 rules (without :root). Owned by WP3, which rewrites it per docs/design/v1.3.md §4.3. */
 /*
- * --rn-lh (default 1) sets the digit window height in multiples of the font size.
- * Heights use calc(var(--rn-lh) * 1em) as a fallback for browsers without `lh`
- * support, then 1lh so the window always matches the line-height of the cells.
- * The cells keep line-height: var(--rn-lh) on the fallback path, so window and
- * line box always agree there; only browsers with `lh` support (see the
- * @supports block below) also follow a line-height set directly on the root.
+ * rolling-number rules (docs/design/v1.3.md §4.3). The single source of the
+ * injected sheet (styles.ts, `?inline`) and of dist/style.css. No :root here:
+ * every default lives in a var() fallback; the :root defaults are in
+ * defaults.css (dist/style.css only).
+ *
+ * --rn-lh (default 1) sets the digit window height in multiples of the font
+ * size. Heights use calc(var(--rn-lh) * 1em) as a fallback for browsers
+ * without `lh` support, then 1lh so the window always matches the line-height
+ * of the cells; only browsers with `lh` support (the @supports block) also
+ * follow a line-height set directly on the host.
+ *
+ * Digits never use CSS transitions: one JS engine drives counts and rolls
+ * (inline transform on .rn-scale, --rn-in × --rn-w for entering/leaving nodes).
+ * At rest the 1.2 data-digit rules position each column.
  */
 .rn-rolling-number {
-  display: inline-flex;
-  align-items: center;
-  font-variant-numeric: tabular-nums;
-  line-height: var(--rn-lh, 1);
-  direction: ltr;
-  unicode-bidi: isolate;
-  user-select: none;
-  vertical-align: baseline;
+  display: inline-flex; align-items: center; font-variant-numeric: tabular-nums;
+  line-height: var(--rn-lh, 1); direction: ltr; unicode-bidi: isolate; user-select: none;
+  vertical-align: baseline; white-space: nowrap;
 }
+/* legacy hooks kept (no digit transitions exist any more; protects pinned 1.2 sheets) */
+.rn-interpolating .rn-scale, .rn-interpolating .rn-sign,
+[data-rn-state="animating"] .rn-scale, [data-rn-state="animating"] .rn-sign { transition: none !important; }
+[data-rn-state="animating"] .rn-scale { will-change: transform; }
 
-.rn-interpolating .rn-scale,
-.rn-interpolating .rn-sign,
-[data-rn-state="animating"] .rn-scale,
-[data-rn-state="animating"] .rn-sign {
-  transition: none !important;
+.rn-sign, .rn-static {
+  display: inline-block; line-height: var(--rn-lh, 1); white-space: pre;
+  text-decoration: var(--rn-decoration, none);
 }
-
-.rn-sign {
-  display: inline-block;
-  line-height: var(--rn-lh, 1);
-  transition: opacity var(--rn-duration) var(--rn-easing);
-  margin-right: 0.05em;
-}
+.rn-sign { margin-right: calc(var(--rn-in, 1) * 0.05em); }
 
 .rn-col {
-  position: relative;
-  overflow: hidden;
-  overflow: clip;
-  display: inline-block;
-  height: calc(var(--rn-lh, 1) * 1em);
-  height: 1lh;
+  position: relative; display: inline-grid; justify-items: center; justify-content: center;
+  grid-template-rows: calc(var(--rn-lh, 1) * 1em); grid-template-rows: 1lh;
+  height: calc(var(--rn-lh, 1) * 1em); height: 1lh;
+  overflow: hidden; overflow: clip;
+  overflow-clip-margin: var(--rn-bleed, 0px);                    /* C2 */
 }
-
+/* C3: static decorator. Word joiners make Chrome paint decorations on the figure space. */
+.rn-col::before {
+  content: "\2060\2007\2060"; grid-area: 1 / 1; display: block; white-space: pre;
+  pointer-events: none; line-height: var(--rn-lh, 1); text-decoration: var(--rn-decoration, none);
+}
 .rn-sizer {
-  visibility: hidden;
-  display: block;
-  line-height: var(--rn-lh, 1);
-  font-variant-numeric: tabular-nums;
-  height: calc(var(--rn-lh, 1) * 1em);
-  height: 1lh;
-  pointer-events: none;
+  grid-area: 1 / 1; visibility: hidden; display: block; pointer-events: none;
+  line-height: var(--rn-lh, 1); font-variant-numeric: tabular-nums;
+  height: calc(var(--rn-lh, 1) * 1em); height: 1lh;
+  /* timing probe (read by JS, never animates: no animation-name) */
+  animation-duration: var(--rn-duration, 0.5s);
+  animation-timing-function: var(--rn-easing, cubic-bezier(0.2, 1, 0.3, 1));
 }
-
-.rn-scale {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  transition: transform var(--rn-duration) var(--rn-easing);
+.rn-scale { grid-area: 1 / 1; align-self: start; position: relative; display: flex; flex-direction: column; }
+.rn-cell, .rn-scale::after {
+  display: block; text-align: center; line-height: var(--rn-lh, 1); font-variant-numeric: tabular-nums;
+  height: calc(var(--rn-lh, 1) * 1em); height: 1lh;
 }
+.rn-scale::after { content: "0"; position: absolute; top: 100%; left: 0; right: 0; }      /* wrap cell (B19) */
+.rn-scale[data-rn-zero]::after { content: attr(data-rn-zero); }
 
-.rn-interpolating .rn-scale,
-[data-rn-state="animating"] .rn-scale {
-  will-change: transform;
-}
-
-.rn-cell {
-  display: block;
-  text-align: center;
-  line-height: var(--rn-lh, 1);
-  font-variant-numeric: tabular-nums;
-  height: calc(var(--rn-lh, 1) * 1em);
-  height: 1lh;
-}
-
-/*
- * With `lh` support the window height follows the line-height of the cells, so
- * they can inherit it from the root (e.g. style="line-height: 1.5" on the host).
- */
 @supports (height: 1lh) {
-  .rn-sign,
-  .rn-sizer,
-  .rn-cell {
-    line-height: inherit;
-  }
+  .rn-sign, .rn-sizer, .rn-cell { line-height: inherit; }
+  .rn-scale::after, .rn-static, .rn-col::before { line-height: inherit; }
 }
 
-/* CSS Transform positions for digits 0-9 */
 .rn-col[data-digit="0"] > .rn-scale { transform: translateY(0%); }
 .rn-col[data-digit="1"] > .rn-scale { transform: translateY(-10%); }
 .rn-col[data-digit="2"] > .rn-scale { transform: translateY(-20%); }
@@ -99,9 +74,16 @@
 .rn-col[data-digit="8"] > .rn-scale { transform: translateY(-80%); }
 .rn-col[data-digit="9"] > .rn-scale { transform: translateY(-90%); }
 
-@media (prefers-reduced-motion: reduce) {
-  .rn-scale,
-  .rn-sign {
-    transition: none !important;
-  }
+.rn-col[data-rn-lead] > .rn-scale > .rn-cell:first-child,
+.rn-col[data-rn-lead] > .rn-scale::after { visibility: hidden; }
+.rn-col[data-rn-in], .rn-sign[data-rn-in], .rn-static[data-rn-in] {
+  width: calc(var(--rn-in, 0) * var(--rn-w, 0px)); opacity: var(--rn-in, 0);
+  overflow: hidden; overflow: clip;
 }
+/* C1: per-glyph fill; inert when --rn-fill is unset (verified pixel-identical) */
+.rn-cell, .rn-scale::after, .rn-static, .rn-sign {
+  background-image: var(--rn-fill, none); -webkit-background-clip: text; background-clip: text;
+}
+@media (prefers-reduced-motion: reduce) { .rn-scale, .rn-sign { transition: none !important; } }
+/* adopted SSR fallback: !important in the layer beats unlayered author display rules and resets */
+.rn-ssr[data-rn-ssr][hidden] { display: none !important; }
