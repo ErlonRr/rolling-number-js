@@ -93,6 +93,16 @@ function roleOf(partType: string): TokenRole {
   return partType == 'currency' || partType == 'unit' ? partType : partType == 'percentSign' ? 'percent' : 'literal';
 }
 
+/**
+ * Identity of a static part across the layouts of one formatter: a literal by
+ * its text, a currency/unit/percent part by its role only, since a name follows
+ * the plural form of the number ("1 day", "5 days") and keeps its key.
+ */
+function idOf(p: Part): string {
+  const role = roleOf(p.type);
+  return role == 'literal' ? role + '\0' + p.value : role;
+}
+
 function makeNF(locales: string[] | undefined, opts: NFOptions): NF {
   return new Intl.NumberFormat(locales, opts as Intl.NumberFormatOptions);
 }
@@ -125,13 +135,15 @@ function newFormatter(o: NormalizedOptions): Formatter {
   let glyphs: readonly string[] | null = null;
   let zeroText = '0';
   let resolved: unknown = 0;
-  /** Static parts (role\0text) of the canonical positive layout: [pre side, post side]. */
+  /** Ids (idOf) of the static parts of the canonical positive layout: [pre side, post side]. */
   let canon: string[][] = [[], []];
   // Intl formatters (null on the plain path): main, quantization twin, label twin, twin with k integer digits.
   let nf: NF | null = null;
   let nfq: NF | null = null;
   let nfLabel: NF | null = null;
   let nfInt: (k: number) => NF = () => nf as NF;
+  /** Plural rules of the shown number (null unless a unit or currency name is shown: "1 day" / "5 days"). */
+  let pr: Intl.PluralRules | null = null;
 
   if (o.locale || o.format) {
     try {
@@ -167,10 +179,15 @@ function newFormatter(o: NormalizedOptions): Formatter {
       let side = 0;
       for (const p of partsOf(main, toDecimal('1', sI == 100 ? 2 : 0, false))) {
         if (p.type == 'integer' || p.type == 'fraction') side = 1;
-        else if (!/^(group|decimal|minusSign|plusSign)$/.test(p.type)) canonI[side].push(roleOf(p.type) + '\0' + p.value);
+        else if (!/^(group|decimal|minusSign|plusSign)$/.test(p.type)) canonI[side].push(idOf(p));
       }
       const q = twin({ numberingSystem: 'latn', useGrouping: false });
       const label = padCore > 1 ? twin({ minimumIntegerDigits: 1 }) : main;
+      // Currency and unit names follow the plural form of the shown number, with its fraction digits ("1.00 euros").
+      const prI =
+        ro.style == 'currency' || ro.style == 'unit'
+          ? new Intl.PluralRules(ro.locale as string, { minimumFractionDigits: fI, maximumFractionDigits: fI })
+          : null;
       // Commit (nothing below throws).
       const byInt = new Map<number, NF>([[padCore, main]]);
       nfInt = (k) => byInt.get(k) || (byInt.set(k, twin({ minimumIntegerDigits: k })), byInt.get(k) as NF);
@@ -182,6 +199,7 @@ function newFormatter(o: NormalizedOptions): Formatter {
       glyphs = native.some((g, d) => g != String(d)) && native.every((g) => codePoints(g) == 1) ? Object.freeze(native) : null;
       zeroText = native[0] || '0';
       canon = canonI;
+      pr = prI;
       resolved = Object.keys(ro).sort().map((k) => [k, ro[k]]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'error';
@@ -192,6 +210,8 @@ function newFormatter(o: NormalizedOptions): Formatter {
   const shift = f + (scale == 100 ? 2 : 0);
   const pow = 10 ** f;
   const layouts = new Map<string, NumberLayout>();
+  /** Clamped magnitude (`|A|`) of the shapes returned by `shapeOf`, for their plural form (only with `pr`). */
+  const shownA = new WeakMap<LayoutShape, number>();
 
   /** Plain-path parts of `a` with `padTo` integer digits. */
   const plainParts = (a: number, padTo: number, sign: string): Part[] => {
@@ -232,13 +252,14 @@ function newFormatter(o: NormalizedOptions): Formatter {
     };
   };
 
-  const build = (s: LayoutShape): NumberLayout => {
+  /** Layout of `s`, formatted from the representative `10^(k−1)` or from the numeric string `num` (same digit count and sign). */
+  const build = (s: LayoutShape, num: string): NumberLayout => {
     const core = nf ? Math.min(s.intDigits, INTL_MAX_INT) : s.intDigits;
     const extra = s.intDigits - core;
     const parts = nf
       ? s.zero
         ? partsOf(nfInt(Math.max(core, padCore)), '0')
-        : partsOf(nf, toDecimal('1' + '0'.repeat(core - 1), shift - f, s.negative))
+        : partsOf(nf, num || toDecimal('1' + '0'.repeat(core - 1), shift - f, s.negative))
       : plainParts(s.zero ? 0 : s.negative ? -1 : 1, core, MINUS);
     let n = extra;
     for (const p of parts) if (p.type == 'integer') n += codePoints(p.value);
@@ -273,10 +294,11 @@ function newFormatter(o: NormalizedOptions): Formatter {
       } else if (t == 'minusSign' || t == 'plusSign') {
         out.push({ kind: 'sign', key: 'sign', text: p.value });
       } else {
-        // Literal/currency/unit/percent: `lit:{side}:n`, n = its index in the canonical (positive) layout of that
-        // side, so e.g. "$" keeps its key when accounting parentheses or bidi marks come and go; others follow.
+        // Literal/currency/unit/percent: `lit:{side}:n`, n = the index of its id (idOf) in the canonical (positive)
+        // layout of that side, so e.g. "$" keeps its key when accounting parentheses or bidi marks come and go, and
+        // "days" the key of "day"; others follow.
         const role = roleOf(t);
-        const id = role + '\0' + p.value;
+        const id = idOf(p);
         let j = canon[side].findIndex((c, i) => c == id && !used[side].has(i));
         if (j < 0) j = next[side]++;
         else used[side].add(j);
@@ -294,9 +316,20 @@ function newFormatter(o: NormalizedOptions): Formatter {
 
   const layout = (shape: LayoutShape): NumberLayout => {
     const s = norm(shape);
-    const k = [s.intDigits, +s.negative, +s.overflow, +s.zero].join();
+    const M = shownA.get(shape);
+    let num = '';
+    let cat = '';
+    if (pr && !s.zero) {
+      // Plural-dependent names ("1 day", "5 days", ru "21 день"): a shape from shapeOf takes the plural form of
+      // the number it shows, built from that number when the representative's form differs (cached per form).
+      cat = pr.select(10 ** (Math.min(s.intDigits, INTL_MAX_INT) - 1));
+      const c = M ? pr.select(+toDecimal(String(M), f, false)) : cat;
+      if (c != cat) num = numStr(s.negative ? -(M as number) : (M as number));
+      cat = c;
+    }
+    const k = [s.intDigits, +s.negative, +s.overflow, +s.zero, cat].join();
     let l = layouts.get(k);
-    if (!l) layouts.set(k, (l = build(s)));
+    if (!l) layouts.set(k, (l = build(s, num)));
     return l;
   };
   const keysOf = (l: NumberLayout): Set<string> => new Set(l.tokens.map((t) => t.key));
@@ -328,12 +361,14 @@ function newFormatter(o: NormalizedOptions): Formatter {
     shapeOf(A, Amax) {
       const a = safeA(A);
       const M = Math.floor(Math.min(Math.abs(a), Amax >= 0 ? Amax : Infinity));
-      return {
+      const shape = {
         intDigits: Math.min(MAX_INT, Math.max(pad, String(M).length - f, 1)),
         negative: a < 0 && M > 0,
         overflow: Math.abs(a) > Amax,
         zero: !M
       };
+      if (pr && M) shownA.set(shape, M);
+      return shape;
     },
     shapeOfDisplay(d: DisplayState) {
       let k = d.inn.length - 1;
@@ -346,8 +381,9 @@ function newFormatter(o: NormalizedOptions): Formatter {
       const to = norm(toShape);
       // Same sign/overflow/zero state as `from`, with `d` integer digits.
       const fromAt = (d: number): NumberLayout => layout({ ...from, intDigits: d });
-      const L0 = layout(from);
-      const L3 = layout(to);
+      // The original shapes: a shape from shapeOf keeps the plural form of its number.
+      const L0 = layout(fromShape);
+      const L3 = layout(toShape);
       const S0 = keysOf(L0);
       const S1 = keysOf(fromAt(to.intDigits));
       const S2 = keysOf(layout({ ...to, overflow: from.overflow }));

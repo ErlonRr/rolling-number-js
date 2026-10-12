@@ -469,6 +469,97 @@ describe('Intl path: styles and signs', () => {
   });
 });
 
+describe('plural-dependent literals (unit and currency names)', () => {
+  /** What the columns show at rest: the layout's tokens with the digits of the clamped `A`. */
+  function columnsText(f: Formatter, v: number, max: number | null = null): string {
+    const r = rest(f, v, max);
+    const digits = String(Math.min(Math.abs(r.A), f.maxA(max)));
+    return r.layout.tokens
+      .map((t) => {
+        if (t.kind !== 'digit') return t.text;
+        const d = +(digits[digits.length - 1 - t.place] ?? '0');
+        return f.glyphs ? f.glyphs[d] : String(d);
+      })
+      .join('');
+  }
+
+  /** Columns, text and label agree for every value (no `max`, no affixes; the label has no pad zeros). */
+  function expectAgree(o: RollingNumberUpdate, values: number[]): void {
+    const f = fmt(o);
+    const unpadded = fmt({ ...o, pad: 1 });
+    expect(f.plain).toBe(false);
+    for (const v of values) {
+      const r = rest(f, v);
+      const ctx = `${JSON.stringify(o)} ${v}`;
+      expect(columnsText(f, v), ctx).toBe(r.text);
+      expect(r.label, ctx).toBe(rest(unpadded, v).text);
+    }
+  }
+
+  it('en long units: "1 day", "5 days" (the layout follows the plural category of the value)', () => {
+    const f = fmt({ locale: 'en', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } });
+    expect(columnsText(f, 5)).toBe('5 days');
+    expect(rest(f, 5).text).toBe('5 days');
+    expect(columnsText(f, 1)).toBe('1 day');
+    expect(columnsText(f, 0)).toBe('0 days');
+    expect(columnsText(f, 21)).toBe('21 days');
+    expect(columnsText(f, 150, 99)).toBe('99 days');
+    expectAgree({ locale: 'en', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [0, 1, 2, 5, 10, 11, 21, 100, 101, -1, -5]);
+    expectAgree({ locale: 'en', pad: 3, format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [1, 5, 1234]);
+    // with fraction digits "1.0" is plural ("1.0 days"), as Intl formats it
+    expectAgree({ locale: 'en', decimals: 1, format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [1, 1.5, 2]);
+  });
+
+  it('ru: one / few / many forms ("1 день", "2 дня", "5 дней", "21 день")', () => {
+    const f = fmt({ locale: 'ru', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } });
+    const word = (v: number): string => columnsText(f, v).replace(/^[\d\s]+/, '');
+    expect(new Set([1, 21, 101].map(word)).size).toBe(1);
+    expect(new Set([2, 3, 22].map(word)).size).toBe(1);
+    expect(new Set([5, 11, 25, 100].map(word)).size).toBe(1);
+    expect(new Set([word(1), word(2), word(5)]).size).toBe(3);
+    expectAgree({ locale: 'ru', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [0, 1, 2, 5, 11, 12, 21, 22, 25, 101, 111]);
+    expectAgree({ locale: 'ru', format: { style: 'currency', currency: 'RUB', currencyDisplay: 'name' } }, [1, 2, 5, 21, 1.5]);
+  });
+
+  it('currency names: "1 euro", "3 euros" (decimals 0); "1.00 euros"', () => {
+    const f = fmt({ locale: 'en', decimals: 0, format: { style: 'currency', currency: 'EUR', currencyDisplay: 'name' } });
+    expect(columnsText(f, 3)).toBe('3 euros');
+    expect(columnsText(f, 1)).toBe('1 euro');
+    expectAgree({ locale: 'en', decimals: 0, format: { style: 'currency', currency: 'EUR', currencyDisplay: 'name' } }, [0, 1, 3, 10, 1234]);
+    expectAgree({ locale: 'en', format: { style: 'currency', currency: 'EUR', currencyDisplay: 'name' } }, [0, 1, 3, 1234.5]);
+    expectAgree({ locale: 'fr', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [0, 1, 1.4, 2, 5]);
+  });
+
+  it('other plural systems agree too (pl, ar, ja)', () => {
+    expectAgree({ locale: 'pl', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [1, 2, 5, 12, 22, 25]);
+    expectAgree({ locale: 'ar', format: { style: 'unit', unit: 'day', unitDisplay: 'long', numberingSystem: 'latn' } }, [3, 5, 11, 100, 101]);
+    expectAgree({ locale: 'ja', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } }, [1, 5]);
+  });
+
+  it('the unit/currency token keeps its key when only its text changes ("day" → "days")', () => {
+    const f = fmt({ locale: 'en', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } });
+    const one = rest(f, 1).layout;
+    const five = rest(f, 5).layout;
+    expect(sig(one)).toBe('i0 lit:post:0( ) lit:post:1(day)');
+    expect(sig(five)).toBe('i0 lit:post:0( ) lit:post:1(days)');
+    expect(sig(rest(f, 10).layout)).toBe('i1 i0 lit:post:0( ) lit:post:1(days)');
+    const m = f.motionLayout(shapeAt(f, 1), shapeAt(f, 5));
+    expect(msig(m)).toBe('i0 lit:post:0 lit:post:1');
+    expect(m.tokens.at(-1)?.token).toMatchObject({ key: 'lit:post:1', text: 'days' });
+    expect(msig(f.motionLayout(shapeAt(f, 5), shapeAt(f, 1)))).toBe('i0 lit:post:0 lit:post:1');
+    expect(msig(f.motionLayout(shapeAt(f, 1), shapeAt(f, 10)))).toBe('i1+ i0 lit:post:0 lit:post:1');
+    const ru = fmt({ locale: 'ru', format: { style: 'unit', unit: 'day', unitDisplay: 'long' } });
+    const keys = (v: number): string[] => rest(ru, v).layout.tokens.map((t) => t.key);
+    expect(keys(5)).toEqual(keys(1));
+    expect(keys(2)).toEqual(keys(1));
+    const eur = fmt({ locale: 'en', decimals: 0, format: { style: 'currency', currency: 'EUR', currencyDisplay: 'name' } });
+    expect(rest(eur, 3).layout.tokens.map((t) => t.key)).toEqual(rest(eur, 1).layout.tokens.map((t) => t.key));
+    // layouts are still cached (per shape and plural form)
+    expect(rest(f, 7).layout).toBe(five);
+    expect(rest(f, 1).layout).toBe(one);
+  });
+});
+
 describe('motion layouts and ties', () => {
   it('a group separator enters with the column that needs it (en-US vs es min2)', () => {
     const en = fmt({ locale: 'en-US' });
