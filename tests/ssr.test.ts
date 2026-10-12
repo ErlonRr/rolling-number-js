@@ -24,6 +24,30 @@ describe('SSR import safety (no DOM)', () => {
     expect(() => index.defineRollingNumber('x-y')).not.toThrow();
   });
 
+  it('the DOM-free entries (rolling-number/ssr and rolling-number/action) import without DOM globals', async () => {
+    const ssr = await import('../src/ssr-entry');
+    const action = await import('../src/action-entry');
+    expect(Object.keys(ssr).sort()).toEqual(['renderStaticHTML', 'renderStaticText']);
+    expect(ssr.renderStaticText({ value: 1234, locale: 'en-US', suffixText: ' pts' })).toBe('1,234 pts');
+    expect(ssr.renderStaticHTML({ value: 7 }, { tag: 'span' })).toBe(
+      '<span class="rn-rolling-number" role="img" aria-label="7" data-rn-ssr><span class="rn-ssr" data-rn-ssr>7</span></span>'
+    );
+    expect(typeof action.RollingNumberCore).toBe('function');
+    expect(typeof action.rollingNumber).toBe('function');
+    expect(typeof action.configureRollingNumber).toBe('function');
+    expect(typeof action.injectRollingNumberStyles).toBe('function');
+    // importing them defined no DOM globals and registered nothing
+    for (const name of ['window', 'document', 'HTMLElement', 'customElements']) {
+      expect(typeof (globalThis as Record<string, unknown>)[name], name).toBe('undefined');
+    }
+  });
+
+  it('the root entry exposes the SSR helpers on the server', async () => {
+    const index = await import('../src/index');
+    expect(index.renderStaticText({ value: 150, max: 99, overflowSuffix: '+' })).toBe('99+');
+    expect(index.renderStaticHTML({ value: 5 })).toBe('<span class="rn-ssr" data-rn-ssr>5</span>');
+  });
+
   it('normalizeOptions works on the server', async () => {
     const { normalizeOptions } = await import('../src/core');
     expect(normalizeOptions({ pad: 3 })).toEqual({ value: 0, pad: 3, max: null, interpolate: true, duration: 400 });
