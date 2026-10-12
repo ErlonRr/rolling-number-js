@@ -11,4 +11,4 @@ export type {
   RollingNumberLabelInfo,
   RollingNumberOptions,
   RollingNumberUnit
-} from './types';
+} from './public-types';

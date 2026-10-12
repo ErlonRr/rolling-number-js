@@ -174,6 +174,10 @@ describe('core option types', () => {
     expectTypeOf(renderStaticHTML).parameter(1).toEqualTypeOf<{ tag?: string; attrs?: Record<string, string> } | undefined>();
     expectTypeOf(ActionEntry.rollingNumber).toEqualTypeOf(rollingNumber);
     expectTypeOf(SsrEntry.renderStaticHTML).toEqualTypeOf(renderStaticHTML);
+    // rolling-number/ssr re-exports the same (DOM-free) option types as the root entry
+    expectTypeOf<SsrEntry.RollingNumberOptions>().toEqualTypeOf<RollingNumberOptions>();
+    expectTypeOf<SsrEntry.RollingNumberFormat>().toEqualTypeOf<RollingNumberFormat>();
+    expectTypeOf<SsrEntry.RollingNumberLabelInfo>().toEqualTypeOf<RollingNumberLabelInfo>();
   });
 });
 

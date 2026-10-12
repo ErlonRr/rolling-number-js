@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
 const hasDist = existsSync(join(dist, 'rolling-number.js')) && existsSync(join(dist, 'register.js'));
+const hasSsrTypes = existsSync(join(dist, 'ssr-entry.d.ts')) && existsSync(join(dist, 'ssr-entry.d.cts'));
 
 describe('SSR import safety (no DOM)', () => {
   it('runs without DOM globals', () => {
@@ -51,6 +52,31 @@ describe('SSR import safety (no DOM)', () => {
   it('normalizeOptions works on the server', async () => {
     const { normalizeOptions } = await import('../src/core');
     expect(normalizeOptions({ pad: 3 })).toEqual({ value: 0, pad: 3, max: null, interpolate: true, duration: 400 });
+  });
+
+  it.skipIf(!hasSsrTypes)('the built rolling-number/ssr declarations need no DOM lib (lib es2022, no @types, skipLibCheck false)', async () => {
+    const ts = (await import('typescript')).default;
+    const program = ts.createProgram({
+      rootNames: [join(dist, 'ssr-entry.d.ts'), join(dist, 'ssr-entry.d.cts')],
+      options: {
+        lib: ['lib.es2022.d.ts'],
+        types: [],
+        skipLibCheck: false,
+        strict: true,
+        noEmit: true,
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.Node16,
+        moduleResolution: ts.ModuleResolutionKind.Node16
+      }
+    });
+    const errors = ts.getPreEmitDiagnostics(program).map(
+      (d) => `${d.file ? d.file.fileName.slice(dist.length + 1) + ': ' : ''}${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`
+    );
+    expect(errors).toEqual([]);
+    // DOM typings: the event types and the ElementEventMap augmentation stay out of its type graph
+    const files = program.getSourceFiles().map((f) => f.fileName).filter((f) => f.startsWith(dist));
+    expect(files.length).toBeGreaterThan(2);
+    for (const file of files) expect(ts.sys.readFile(file), file).not.toMatch(/CustomEvent|ElementEventMap/);
   });
 
   it.skipIf(!hasDist)('built dist/rolling-number.js and dist/register.js load in plain Node (ESM + CJS)', () => {

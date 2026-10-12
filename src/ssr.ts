@@ -7,7 +7,7 @@
  *
  * @module
  */
-import type { RollingNumberOptions, RollingNumberUpdate } from './types';
+import type { RollingNumberOptions, RollingNumberUpdate } from './public-types';
 import { OPTION_ATTRIBUTES, OPTION_KEYS, readOption, resolveOptions } from './options';
 import { createBaseFormatter, resolveLabel } from './format';
 
