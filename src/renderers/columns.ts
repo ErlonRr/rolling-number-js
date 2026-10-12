@@ -97,391 +97,67 @@ const magnitudeDigits = (A: number): string => String(Math.abs(Math.round(A)) ||
 const digitAt = (s: string, k: number): number => (k < s.length ? s.charCodeAt(s.length - 1 - k) - 48 : 0);
 const pxText = (w: number): string => String(Math.round(w * 1000) / 1000) + 'px';
 
+/** Removes inline properties and the `style` attribute once it is empty. */
+function removeStyle(el: HTMLElement, ...props: string[]): void {
+  const style = el.style;
+  for (const p of props) style.removeProperty(p);
+  if (style.length === 0 && el.hasAttribute('style')) el.removeAttribute('style');
+}
+
 /**
  * Creates the columns renderer for `host` (docs/design/v1.3.md §4).
+ *
+ * Written with closures (not a class) so the minifier can mangle the
+ * internals: this module ships in every DOM bundle.
  *
  * @param host - the element the counter renders into; its other children are never touched.
  * @param doc - the host's owner document (every node is created from it).
  * @param fmt - the current formatter (its glyphs seed new cells until the first `RestState`).
  */
 export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatter): Renderer {
-  return new ColumnsRenderer(host, doc, fmt);
-}
-
-class ColumnsRenderer implements Renderer {
-  readonly kind = 'columns' as const;
-
-  private readonly host: Element;
-  private readonly doc: Document;
-  private glyphs: readonly string[] | null;
+  let glyphs: readonly string[] | null = fmt.glyphs;
   /** owned nodes in DOM order */
-  private seq: OwnedNode[] = [];
-  private readonly byKey = new Map<string, OwnedNode>();
-  private readonly owned = new Set<Node>();
-  private mounted = false;
-  private destroyed = false;
+  let seq: OwnedNode[] = [];
+  const byKey = new Map<string, OwnedNode>();
+  const owned = new Set<Node>();
+  let mounted = false;
+  let destroyed = false;
 
   /** adopted SSR fallback and whether it already had `hidden` */
-  private adopted: Element | null = null;
-  private adoptedWasHidden = false;
+  let adopted: Element | null = null;
+  let adoptedWasHidden = false;
 
   /** motion state (between begin() and rest()) */
-  private moving = false;
-  private motionKind: 'count' | 'roll' = 'count';
+  let moving = false;
+  let motionKind: 'count' | 'roll' = 'count';
   /** reference column width in px (read phase) */
-  private colW: number | null = null;
+  let colW: number | null = null;
   /** sign interpolation: `sigma` (negative-only sign) or `lerp` (a positive sign is shown at an endpoint) */
-  private signMode: 'sigma' | 'lerp' = 'sigma';
-  private signNegText: string | null = null;
-  private signPosText: string | null = null;
-
-  constructor(host: Element, doc: Document, fmt: Formatter) {
-    this.host = host;
-    this.doc = doc;
-    this.glyphs = fmt.glyphs;
-  }
-
-  // ── Renderer ──────────────────────────────────────────────────────────
-
-  mount(rest: RestState, adopt: boolean): void {
-    if (this.destroyed) return;
-    if (!this.mounted) {
-      this.mounted = true;
-      if (adopt) this.adopt();
-    }
-    this.rest(rest);
-  }
-
-  setFormatter(fmt: Formatter): void {
-    if (this.destroyed) return;
-    this.glyphs = fmt.glyphs;
-  }
-
-  canAnimate(): boolean {
-    return true;
-  }
-
-  begin(motion: MotionLayout, kind: 'count' | 'roll', target: RestState): void {
-    if (this.destroyed) return;
-    this.glyphs = target.glyphs;
-    const roll = kind === 'roll';
-    const prevSign = this.byKey.get('sign');
-    const startPositiveSign = prevSign !== undefined && prevSign.kind === 'sign' && !prevSign.negative;
-
-    // Pin what is on screen before any data-digit changes (H4): the inline
-    // transform overrides the data-digit rule from here until rest().
-    for (const node of this.seq) {
-      if (node.kind === 'digit' && node.transform === null) this.writeTransform(node, node.pos);
-      node.inn0 = node.inn;
-    }
-
-    const targetDigits = magnitudeDigits(target.A);
-    const inMotion = new Set<string>();
-    const motionNodes: OwnedNode[] = [];
-    for (const mt of motion.tokens) {
-      const token = mt.token;
-      let node = this.byKey.get(token.key);
-      if (node && node.kind !== token.kind) {
-        this.drop(node);
-        node = undefined;
-      }
-      if (!node) {
-        const digit = token.kind === 'digit' && roll ? digitAt(targetDigits, token.place) : 0;
-        node = this.create(token, digit, true);
-        if (node.kind === 'digit') {
-          this.writeTransform(node, 0);
-          node.lead = true;
-          node.el.setAttribute('data-rn-lead', '');
-        }
-      } else if (node.kind === 'digit' && token.kind === 'digit') {
-        node.place = token.place;
-      }
-      node.presence = mt.presence;
-      node.tie = mt.tie;
-      inMotion.add(token.key);
-      motionNodes.push(node);
-    }
-
-    // Owned nodes missing from the motion layout stay keyed and fade as leaving
-    // (only rest() removes them); they keep their place next to their neighbors.
-    const before: OwnedNode[] = [];
-    const after = new Map<string, OwnedNode[]>();
-    let lastPresent: string | null = null;
-    for (const node of this.seq) {
-      if (inMotion.has(node.key)) {
-        lastPresent = node.key;
-        continue;
-      }
-      node.presence = 'absent';
-      node.tie = null;
-      if (lastPresent === null) before.push(node);
-      else {
-        const list = after.get(lastPresent);
-        if (list) list.push(node);
-        else after.set(lastPresent, [node]);
-      }
-    }
-    const order: OwnedNode[] = before;
-    for (const node of motionNodes) {
-      order.push(node);
-      const list = after.get(node.key);
-      if (list) for (const n of list) order.push(n);
-    }
-    this.reorder(order);
-
-    // Roll path: surviving (and entering) columns show the target digit
-    // synchronously, as in 1.2 (S3). Count path: frame() writes round(pos).
-    if (roll) {
-      for (const node of motionNodes) {
-        if (node.kind === 'digit' && node.presence !== 'leave') this.writeDigit(node, digitAt(targetDigits, node.place));
-      }
-    }
-
-    // Sign: a negative-only sign follows sigma; a positive sign shown at an
-    // endpoint (signDisplay 'always'/'exceptZero') fades by presence and its
-    // text swaps at A = 0.
-    let targetSign: Token | null = null;
-    for (const token of target.layout.tokens) if (token.kind === 'sign') targetSign = token;
-    const endPositiveSign = targetSign !== null && target.A >= 0;
-    this.signMode = startPositiveSign || endPositiveSign ? 'lerp' : 'sigma';
-    this.signNegText = null;
-    this.signPosText = null;
-    if (prevSign && prevSign.kind === 'sign') {
-      if (prevSign.negative) this.signNegText = prevSign.text;
-      else this.signPosText = prevSign.text;
-    }
-    if (targetSign && targetSign.kind === 'sign') {
-      if (target.A < 0) this.signNegText = targetSign.text;
-      else this.signPosText = targetSign.text;
-    }
-    const sign = this.byKey.get('sign');
-    if (sign && sign.kind === 'sign') {
-      sign.negative = this.signMode === 'sigma' || (this.signNegText !== null && sign.text === this.signNegText);
-    }
-
-    this.motionKind = kind;
-    this.moving = true;
-  }
-
-  measure(): void {
-    if (this.destroyed) return;
-    // Every column has the same width (inline-grid: widest of sizer and cells),
-    // so any column that is not collapsed is the reference for entering ones.
-    let colW: number | null = null;
-    let fallback: ColumnNode | null = null;
-    for (const node of this.seq) {
-      if (node.kind !== 'digit') continue;
-      if (!node.collapsed) {
-        colW = node.el.getBoundingClientRect().width;
-        break;
-      }
-      if (!fallback) fallback = node;
-    }
-    if (colW === null) colW = this.colW ?? (fallback ? this.rangeWidth(fallback.sizer) : null);
-    this.colW = colW;
-
-    for (const node of this.seq) {
-      if (node.kind === 'digit' || !this.mayCollapse(node)) continue;
-      // A collapsed box measures 0: use a Range over its text, which keeps the
-      // glyph width (§14.2). A leaving node measures its own box first.
-      node.w = node.collapsed ? this.rangeWidth(node.el) : node.el.getBoundingClientRect().width;
-    }
-  }
-
-  frame(fs: FrameState): void {
-    if (this.destroyed || !this.moving) return;
-    const q = clamp01(fs.q);
-    const count = this.motionKind === 'count';
-    let signInn = this.signMode === 'sigma' ? clamp01(fs.sigma) : 1;
-
-    // The sign first: tokens tied to it follow its presence.
-    const sign = this.byKey.get('sign');
-    if (sign && sign.kind === 'sign') {
-      if (sign.presence === 'absent') signInn = sign.inn0 * (1 - q);
-      else if (this.signMode === 'lerp') {
-        signInn = this.lerpPresence(sign, q);
-        const text = fs.A < 0 ? this.signNegText : fs.A > 0 ? this.signPosText : null;
-        if (text !== null && text !== sign.text) {
-          sign.el.textContent = text;
-          sign.text = text;
-        }
-        if (text !== null) sign.negative = fs.A < 0;
-      }
-      this.setIn(sign, signInn, sign.w);
-    }
-
-    const n = fs.pos.length;
-    for (const node of this.seq) {
-      if (node.kind === 'sign') continue;
-      if (node.presence === 'absent') {
-        this.setIn(node, node.inn0 * (1 - q), node.kind === 'digit' ? this.colW : node.w);
-        continue;
-      }
-      if (node.kind === 'digit') {
-        const k = node.place;
-        if (k >= n) {
-          this.setIn(node, this.lerpPresence(node, q), this.colW);
-          continue;
-        }
-        const pos = mod10(fs.pos[k]);
-        this.writeTransform(node, pos);
-        if (count) this.writeDigit(node, Math.round(pos) % 10);
-        const lead = fs.lead[k] === 1;
-        if (lead !== node.lead) {
-          node.lead = lead;
-          if (lead) node.el.setAttribute('data-rn-lead', '');
-          else node.el.removeAttribute('data-rn-lead');
-        }
-        node.reel = fs.reel[k] === 1;
-        this.setIn(node, fs.inn[k], this.colW);
-        continue;
-      }
-      this.setIn(node, this.staticPresence(node, fs, q, signInn), node.w);
-    }
-  }
-
-  rest(rest: RestState): void {
-    if (this.destroyed) return;
-    this.glyphs = rest.glyphs;
-    this.moving = false;
-    this.signMode = 'sigma';
-    this.signNegText = null;
-    this.signPosText = null;
-
-    const layout: NumberLayout = rest.layout;
-    const digits = magnitudeDigits(rest.A);
-    const order: OwnedNode[] = [];
-    const keep = new Set<string>();
-    for (const token of layout.tokens) {
-      let node = this.byKey.get(token.key);
-      if (node && node.kind !== token.kind) {
-        this.drop(node);
-        node = undefined;
-      }
-      if (!node) node = this.create(token, token.kind === 'digit' ? digitAt(digits, token.place) : 0, false);
-      keep.add(token.key);
-      order.push(node);
-    }
-    const end = this.endAnchor();
-    for (const node of this.seq.slice()) if (!keep.has(node.key)) this.drop(node);
-    this.reorder(order, end);
-
-    let ti = 0;
-    for (const node of order) {
-      const token = layout.tokens[ti++];
-      node.presence = 'both';
-      node.tie = null;
-      this.clearIn(node);
-      if (node.kind === 'digit') {
-        if (token.kind === 'digit') node.place = token.place;
-        const d = digitAt(digits, node.place);
-        this.writeDigit(node, d);
-        this.writeGlyphs(node);
-        const sizerText = this.glyph(d);
-        if (sizerText !== node.sizerText) {
-          node.sizer.textContent = sizerText;
-          node.sizerText = sizerText;
-        }
-        if (node.transform !== null) {
-          node.transform = null;
-          removeStyle(node.scale, 'transform');
-        }
-        if (node.lead) {
-          node.lead = false;
-          node.el.removeAttribute('data-rn-lead');
-        }
-        node.pos = d;
-        node.reel = false;
-      } else if (token.kind !== 'digit') {
-        if (token.text !== node.text) {
-          node.el.textContent = token.text;
-          node.text = token.text;
-        }
-        if (node.kind === 'sign') node.negative = rest.A < 0;
-        else if (token.kind === 'static' && token.role !== node.role) {
-          node.role = token.role;
-          node.el.setAttribute('data-rn-part', token.role);
-        }
-      }
-    }
-  }
-
-  displayed(): DisplayState | null {
-    if (this.destroyed) return null;
-    let n = 0;
-    for (const node of this.seq) if (node.kind === 'digit' && node.place + 1 > n) n = node.place + 1;
-    const pos: number[] = new Array<number>(n).fill(0);
-    const inn: number[] = new Array<number>(n).fill(0);
-    const reel: boolean[] = new Array<boolean>(n).fill(false);
-    let sigma: number | null = null;
-    let ovf: number | null = null;
-    // Without a sign / overflow node (e.g. accounting parentheses), the tokens
-    // tied to that channel carry it.
-    let tiedSigma = 0;
-    let tiedOvf = 0;
-    for (const node of this.seq) {
-      if (node.kind === 'digit') {
-        pos[node.place] = node.pos;
-        inn[node.place] = node.inn;
-        reel[node.place] = node.reel;
-      } else if (node.kind === 'sign') {
-        sigma = node.negative ? node.inn : 0;
-      } else if (node.role === 'overflow') {
-        ovf = node.inn;
-      } else if (node.tie && node.presence !== 'absent') {
-        if (node.tie.kind === 'sign') tiedSigma = Math.max(tiedSigma, node.inn);
-        else if (node.tie.kind === 'overflow') tiedOvf = Math.max(tiedOvf, node.inn);
-      }
-    }
-    return { pos, inn, sigma: sigma ?? tiedSigma, ovf: ovf ?? tiedOvf, reel };
-  }
-
-  probe(): Element | null {
-    if (this.destroyed) return null;
-    for (const node of this.seq) if (node.kind === 'digit') return node.sizer;
-    return null;
-  }
-
-  destroy(): void {
-    if (this.destroyed) return;
-    this.destroyed = true;
-    this.moving = false;
-    for (const node of this.seq) node.el.remove();
-    this.seq = [];
-    this.byKey.clear();
-    this.owned.clear();
-    const fallback = this.adopted;
-    this.adopted = null;
-    if (fallback && !this.adoptedWasHidden) fallback.removeAttribute('hidden');
-  }
+  let signMode: 'sigma' | 'lerp' = 'sigma';
+  let signNegText: string | null = null;
+  let signPosText: string | null = null;
 
   // ── nodes ─────────────────────────────────────────────────────────────
 
   /** Hides a direct `[data-rn-ssr]` child (restored on destroy). */
-  private adopt(): void {
-    let child: Node | null = this.host.firstChild;
-    while (child) {
+  const adopt = (): void => {
+    for (let child = host.firstChild; child; child = child.nextSibling) {
       if (child.nodeType === 1 && (child as Element).hasAttribute('data-rn-ssr')) {
         const el = child as Element;
-        this.adopted = el;
-        this.adoptedWasHidden = el.hasAttribute('hidden');
-        if (!this.adoptedWasHidden) el.setAttribute('hidden', '');
+        adopted = el;
+        adoptedWasHidden = el.hasAttribute('hidden');
+        if (!adoptedWasHidden) el.setAttribute('hidden', '');
         return;
       }
-      child = child.nextSibling;
     }
-  }
+  };
 
-  private glyph(d: number): string {
-    const g = this.glyphs;
-    return g ? g[d] : String(d);
-  }
+  const glyph = (d: number): string => (glyphs ? glyphs[d] : String(d));
 
-  private create(token: Token, digit: number, collapsed: boolean): OwnedNode {
-    const doc = this.doc;
+  const create = (token: Token, digit: number, collapsed: boolean): OwnedNode => {
+    const el = doc.createElement('span');
     let node: OwnedNode;
     if (token.kind === 'digit') {
-      const el = doc.createElement('span');
       el.className = 'rn-col';
       const d = String(digit);
       el.setAttribute('data-digit', d);
@@ -489,27 +165,26 @@ class ColumnsRenderer implements Renderer {
       const sizer = doc.createElement('span');
       sizer.className = 'rn-sizer';
       sizer.setAttribute('aria-hidden', 'true');
-      const sizerText = this.glyph(digit);
+      const sizerText = glyph(digit);
       sizer.textContent = sizerText;
       const scale = doc.createElement('span');
       scale.className = 'rn-scale';
       scale.setAttribute('aria-hidden', 'true');
-      if (this.glyphs) scale.setAttribute('data-rn-zero', this.glyphs[0]);
+      if (glyphs) scale.setAttribute('data-rn-zero', glyphs[0]);
       for (let i = 0; i <= 9; i++) {
         const cell = doc.createElement('span');
         cell.className = 'rn-cell';
-        cell.textContent = this.glyph(i);
+        cell.textContent = glyph(i);
         scale.appendChild(cell);
       }
       el.appendChild(sizer);
       el.appendChild(scale);
       node = {
         kind: 'digit', key: token.key, el, place: token.place, sizer, scale, digit: d, sizerText,
-        glyphs: this.glyphs, pos: digit, transform: null, lead: false, reel: false,
+        glyphs, pos: digit, transform: null, lead: false, reel: false,
         presence: 'both', tie: null, inn: 1, inn0: 1, collapsed: false, innText: '', w: null, wText: ''
       };
     } else {
-      const el = doc.createElement('span');
       if (token.kind === 'sign') {
         el.className = 'rn-sign';
       } else {
@@ -533,80 +208,106 @@ class ColumnsRenderer implements Renderer {
       node.inn0 = 0;
       node.collapsed = true;
       node.innText = '0';
-      node.el.setAttribute('data-rn-in', '');
-      node.el.style.setProperty('--rn-in', '0');
+      el.setAttribute('data-rn-in', '');
+      el.style.setProperty('--rn-in', '0');
     }
-    this.byKey.set(token.key, node);
-    this.owned.add(node.el);
+    byKey.set(token.key, node);
+    owned.add(el);
     return node;
-  }
+  };
 
   /** Removes an owned node from the DOM and from the maps. */
-  private drop(node: OwnedNode): void {
+  const drop = (node: OwnedNode): void => {
     node.el.remove();
-    this.owned.delete(node.el);
-    if (this.byKey.get(node.key) === node) this.byKey.delete(node.key);
-    const i = this.seq.indexOf(node);
-    if (i >= 0) this.seq.splice(i, 1);
-  }
+    owned.delete(node.el);
+    if (byKey.get(node.key) === node) byKey.delete(node.key);
+    const i = seq.indexOf(node);
+    if (i >= 0) seq.splice(i, 1);
+  };
+
+  /** The node of `token`'s key, created when missing or of another kind (a different kind is dropped first). */
+  const nodeFor = (token: Token, digit: number, collapsed: boolean): { node: OwnedNode; created: boolean } => {
+    let node = byKey.get(token.key);
+    if (node && node.kind !== token.kind) {
+      drop(node);
+      node = undefined;
+    }
+    return node ? { node, created: false } : { node: create(token, digit, collapsed), created: true };
+  };
 
   /** The node right after the owned block (null = end of the host). */
-  private endAnchor(): Node | null {
-    for (let i = this.seq.length - 1; i >= 0; i--) {
-      const el = this.seq[i].el;
-      if (el.parentNode !== this.host) continue;
+  const endAnchor = (): Node | null => {
+    for (let i = seq.length - 1; i >= 0; i--) {
+      const el = seq[i].el;
+      if (el.parentNode !== host) continue;
       let ref = el.nextSibling;
-      while (ref && this.owned.has(ref)) ref = ref.nextSibling;
+      while (ref && owned.has(ref)) ref = ref.nextSibling;
       return ref;
     }
     return null;
-  }
+  };
 
   /** Puts `order` in the DOM as one contiguous block, moving a node only when its nextSibling differs. */
-  private reorder(order: OwnedNode[], end: Node | null = this.endAnchor()): void {
-    const host = this.host;
+  const reorder = (order: OwnedNode[], end: Node | null): void => {
     let ref = end;
     for (let i = order.length - 1; i >= 0; i--) {
       const el = order[i].el;
       if (el.parentNode !== host || el.nextSibling !== ref) host.insertBefore(el, ref);
       ref = el;
     }
-    this.seq = order;
-  }
+    seq = order;
+  };
 
   // ── writes ────────────────────────────────────────────────────────────
 
-  private writeDigit(node: ColumnNode, d: number): void {
+  const writeDigit = (node: ColumnNode, d: number): void => {
     const s = String(d);
     if (s === node.digit) return;
     node.digit = s;
     node.el.setAttribute('data-digit', s);
-  }
+  };
 
-  private writeTransform(node: ColumnNode, pos: number): void {
+  const writeTransform = (node: ColumnNode, pos: number): void => {
     node.pos = pos;
     const t = 'translateY(' + (-10 * pos).toFixed(3) + '%)';
     if (t === node.transform) return;
     node.transform = t;
     node.scale.style.setProperty('transform', t);
-  }
+  };
 
-  private writeGlyphs(node: ColumnNode): void {
-    const glyphs = this.glyphs;
+  const writeGlyphs = (node: ColumnNode): void => {
     if (sameGlyphs(node.glyphs, glyphs)) return;
     node.glyphs = glyphs;
     let i = 0;
-    for (let cell = node.scale.firstChild; cell; cell = cell.nextSibling) cell.textContent = this.glyph(i++);
+    for (let cell = node.scale.firstChild; cell; cell = cell.nextSibling) cell.textContent = glyph(i++);
     if (glyphs) node.scale.setAttribute('data-rn-zero', glyphs[0]);
     else node.scale.removeAttribute('data-rn-zero');
-  }
+  };
+
+  const writeLead = (node: ColumnNode, lead: boolean): void => {
+    if (lead === node.lead) return;
+    node.lead = lead;
+    if (lead) node.el.setAttribute('data-rn-lead', '');
+    else node.el.removeAttribute('data-rn-lead');
+  };
+
+  /** Back to full presence: no `data-rn-in`, no `--rn-in`/`--rn-w`, no empty `style`. */
+  const clearIn = (node: OwnedNode): void => {
+    node.inn = 1;
+    if (!node.collapsed && node.innText === '' && node.wText === '') return;
+    node.collapsed = false;
+    node.innText = '';
+    node.wText = '';
+    node.el.removeAttribute('data-rn-in');
+    removeStyle(node.el, '--rn-in', '--rn-w');
+  };
 
   /** Writes presence `v` (clamped): collapsed state, `--rn-in` and, once measured, `--rn-w`. */
-  private setIn(node: OwnedNode, v: number, w: number | null): void {
+  const setIn = (node: OwnedNode, v: number, w: number | null): void => {
     v = clamp01(v);
     node.inn = v;
     if (v >= 1) {
-      this.clearIn(node);
+      clearIn(node);
       return;
     }
     const el = node.el;
@@ -626,55 +327,336 @@ class ColumnsRenderer implements Renderer {
       node.innText = innText;
       el.style.setProperty('--rn-in', innText);
     }
-  }
-
-  /** Back to full presence: no `data-rn-in`, no `--rn-in`/`--rn-w`, no empty `style`. */
-  private clearIn(node: OwnedNode): void {
-    node.inn = 1;
-    if (!node.collapsed && node.innText === '' && node.wText === '') return;
-    node.collapsed = false;
-    node.innText = '';
-    node.wText = '';
-    node.el.removeAttribute('data-rn-in');
-    removeStyle(node.el, '--rn-in', '--rn-w');
-  }
+  };
 
   // ── channels ──────────────────────────────────────────────────────────
 
   /** Presence of a node without a channel: from its value at begin toward its end presence. */
-  private lerpPresence(node: OwnedNode, q: number): number {
+  const lerpPresence = (node: OwnedNode, q: number): number => {
     const end = node.presence === 'leave' || node.presence === 'absent' ? 0 : 1;
     return node.inn0 + (end - node.inn0) * q;
-  }
+  };
 
-  private staticPresence(node: StaticNode, fs: FrameState, q: number, signInn: number): number {
+  const staticPresence = (node: StaticNode, fs: FrameState, q: number, signInn: number): number => {
     if (node.role === 'overflow') return fs.ovf;
     const tie = node.tie;
     if (tie) {
-      if (tie.kind === 'place') return tie.place < fs.inn.length ? fs.inn[tie.place] : this.lerpPresence(node, q);
+      if (tie.kind === 'place') return tie.place < fs.inn.length ? fs.inn[tie.place] : lerpPresence(node, q);
       if (tie.kind === 'sign') return signInn;
       return fs.ovf;
     }
-    return this.lerpPresence(node, q);
-  }
+    return lerpPresence(node, q);
+  };
 
   /** True when the node's presence can change during the current motion (it needs a width). */
-  private mayCollapse(node: SignNode | StaticNode): boolean {
-    return node.collapsed || node.presence !== 'both' || node.tie !== null || node.kind === 'sign' || node.role === 'overflow';
-  }
+  const mayCollapse = (node: SignNode | StaticNode): boolean =>
+    node.collapsed || node.presence !== 'both' || node.tie !== null || node.kind === 'sign' || node.role === 'overflow';
 
-  private rangeWidth(el: Element): number | null {
-    const range = typeof this.doc.createRange === 'function' ? this.doc.createRange() : null;
+  const rangeWidth = (el: Element): number | null => {
+    const range = typeof doc.createRange === 'function' ? doc.createRange() : null;
     if (!range || typeof range.getBoundingClientRect !== 'function') return null;
     range.selectNodeContents(el);
     const w = range.getBoundingClientRect().width;
     return Number.isFinite(w) ? w : null;
-  }
-}
+  };
 
-/** Removes inline properties and the `style` attribute once it is empty. */
-function removeStyle(el: HTMLElement, ...props: string[]): void {
-  const style = el.style;
-  for (const p of props) style.removeProperty(p);
-  if (style.length === 0 && el.hasAttribute('style')) el.removeAttribute('style');
+  const signNode = (): SignNode | undefined => {
+    const sign = byKey.get('sign');
+    return sign && sign.kind === 'sign' ? sign : undefined;
+  };
+
+  // ── Renderer ──────────────────────────────────────────────────────────
+
+  const rest = (r: RestState): void => {
+    if (destroyed) return;
+    glyphs = r.glyphs;
+    moving = false;
+    signMode = 'sigma';
+    signNegText = null;
+    signPosText = null;
+
+    const layout: NumberLayout = r.layout;
+    const digits = magnitudeDigits(r.A);
+    const order: OwnedNode[] = [];
+    const keep = new Set<string>();
+    for (const token of layout.tokens) {
+      order.push(nodeFor(token, token.kind === 'digit' ? digitAt(digits, token.place) : 0, false).node);
+      keep.add(token.key);
+    }
+    const end = endAnchor();
+    for (const node of seq.slice()) if (!keep.has(node.key)) drop(node);
+    reorder(order, end);
+
+    let ti = 0;
+    for (const node of order) {
+      const token = layout.tokens[ti++];
+      node.presence = 'both';
+      node.tie = null;
+      clearIn(node);
+      if (node.kind === 'digit') {
+        if (token.kind === 'digit') node.place = token.place;
+        const d = digitAt(digits, node.place);
+        writeDigit(node, d);
+        writeGlyphs(node);
+        const sizerText = glyph(d);
+        if (sizerText !== node.sizerText) {
+          node.sizer.textContent = sizerText;
+          node.sizerText = sizerText;
+        }
+        if (node.transform !== null) {
+          node.transform = null;
+          removeStyle(node.scale, 'transform');
+        }
+        writeLead(node, false);
+        node.pos = d;
+        node.reel = false;
+      } else if (token.kind !== 'digit') {
+        if (token.text !== node.text) {
+          node.el.textContent = token.text;
+          node.text = token.text;
+        }
+        if (node.kind === 'sign') node.negative = r.A < 0;
+        else if (token.kind === 'static' && token.role !== node.role) {
+          node.role = token.role;
+          node.el.setAttribute('data-rn-part', token.role);
+        }
+      }
+    }
+  };
+
+  return {
+    kind: 'columns',
+
+    mount(r: RestState, adoptFallback: boolean): void {
+      if (destroyed) return;
+      if (!mounted) {
+        mounted = true;
+        if (adoptFallback) adopt();
+      }
+      rest(r);
+    },
+
+    setFormatter(f: Formatter): void {
+      if (destroyed) return;
+      glyphs = f.glyphs;
+    },
+
+    canAnimate: () => true,
+
+    begin(motion: MotionLayout, kind: 'count' | 'roll', target: RestState): void {
+      if (destroyed) return;
+      glyphs = target.glyphs;
+      const roll = kind === 'roll';
+      const prevSign = signNode();
+      const startPositiveSign = !!prevSign && !prevSign.negative;
+
+      // Pin what is on screen before any data-digit changes (H4): the inline
+      // transform overrides the data-digit rule from here until rest().
+      for (const node of seq) {
+        if (node.kind === 'digit' && node.transform === null) writeTransform(node, node.pos);
+        node.inn0 = node.inn;
+      }
+
+      const targetDigits = magnitudeDigits(target.A);
+      const inMotion = new Set<string>();
+      const motionNodes: OwnedNode[] = [];
+      for (const mt of motion.tokens) {
+        const token = mt.token;
+        const { node, created } = nodeFor(token, token.kind === 'digit' && roll ? digitAt(targetDigits, token.place) : 0, true);
+        if (node.kind === 'digit') {
+          if (created) {
+            writeTransform(node, 0);
+            writeLead(node, true);
+          } else if (token.kind === 'digit') {
+            node.place = token.place;
+          }
+        }
+        node.presence = mt.presence;
+        node.tie = mt.tie;
+        inMotion.add(token.key);
+        motionNodes.push(node);
+      }
+
+      // Owned nodes missing from the motion layout stay keyed and fade as leaving
+      // (only rest() removes them); they keep their place next to their neighbors.
+      const before: OwnedNode[] = [];
+      const after = new Map<string, OwnedNode[]>();
+      let lastPresent: string | null = null;
+      for (const node of seq) {
+        if (inMotion.has(node.key)) {
+          lastPresent = node.key;
+          continue;
+        }
+        node.presence = 'absent';
+        node.tie = null;
+        if (lastPresent === null) before.push(node);
+        else {
+          const list = after.get(lastPresent);
+          if (list) list.push(node);
+          else after.set(lastPresent, [node]);
+        }
+      }
+      const order: OwnedNode[] = before;
+      for (const node of motionNodes) {
+        order.push(node);
+        const list = after.get(node.key);
+        if (list) order.push(...list);
+      }
+      reorder(order, endAnchor());
+
+      // Roll path: surviving (and entering) columns show the target digit
+      // synchronously, as in 1.2 (S3). Count path: frame() writes round(pos).
+      if (roll) {
+        for (const node of motionNodes) {
+          if (node.kind === 'digit' && node.presence !== 'leave') writeDigit(node, digitAt(targetDigits, node.place));
+        }
+      }
+
+      // Sign: a negative-only sign follows sigma; a positive sign shown at an
+      // endpoint (signDisplay 'always'/'exceptZero') fades by presence and its
+      // text swaps at A = 0.
+      let targetSign: Token | null = null;
+      for (const token of target.layout.tokens) if (token.kind === 'sign') targetSign = token;
+      signMode = startPositiveSign || (targetSign !== null && target.A >= 0) ? 'lerp' : 'sigma';
+      signNegText = null;
+      signPosText = null;
+      if (prevSign) {
+        if (prevSign.negative) signNegText = prevSign.text;
+        else signPosText = prevSign.text;
+      }
+      if (targetSign && targetSign.kind === 'sign') {
+        if (target.A < 0) signNegText = targetSign.text;
+        else signPosText = targetSign.text;
+      }
+      const sign = signNode();
+      if (sign) sign.negative = signMode === 'sigma' || (signNegText !== null && sign.text === signNegText);
+
+      motionKind = kind;
+      moving = true;
+    },
+
+    measure(): void {
+      if (destroyed) return;
+      // Every column has the same width (inline-grid: widest of sizer and cells),
+      // so any column that is not collapsed is the reference for entering ones.
+      let w: number | null = null;
+      let fallback: ColumnNode | null = null;
+      for (const node of seq) {
+        if (node.kind !== 'digit') continue;
+        if (!node.collapsed) {
+          w = node.el.getBoundingClientRect().width;
+          break;
+        }
+        if (!fallback) fallback = node;
+      }
+      colW = w !== null ? w : colW ?? (fallback ? rangeWidth(fallback.sizer) : null);
+
+      for (const node of seq) {
+        if (node.kind === 'digit' || !mayCollapse(node)) continue;
+        // A collapsed box measures 0: use a Range over its text, which keeps the
+        // glyph width (§14.2). A leaving node measures its own box first.
+        node.w = node.collapsed ? rangeWidth(node.el) : node.el.getBoundingClientRect().width;
+      }
+    },
+
+    frame(fs: FrameState): void {
+      if (destroyed || !moving) return;
+      const q = clamp01(fs.q);
+      const count = motionKind === 'count';
+      let signInn = signMode === 'sigma' ? clamp01(fs.sigma) : 1;
+
+      // The sign first: tokens tied to it follow its presence.
+      const sign = signNode();
+      if (sign) {
+        if (sign.presence === 'absent') signInn = sign.inn0 * (1 - q);
+        else if (signMode === 'lerp') {
+          signInn = lerpPresence(sign, q);
+          const text = fs.A < 0 ? signNegText : fs.A > 0 ? signPosText : null;
+          if (text !== null) {
+            if (text !== sign.text) {
+              sign.el.textContent = text;
+              sign.text = text;
+            }
+            sign.negative = fs.A < 0;
+          }
+        }
+        setIn(sign, signInn, sign.w);
+      }
+
+      const n = fs.pos.length;
+      for (const node of seq) {
+        if (node.kind === 'sign') continue;
+        if (node.presence === 'absent') {
+          setIn(node, node.inn0 * (1 - q), node.kind === 'digit' ? colW : node.w);
+          continue;
+        }
+        if (node.kind === 'digit') {
+          const k = node.place;
+          if (k >= n) {
+            setIn(node, lerpPresence(node, q), colW);
+            continue;
+          }
+          const pos = mod10(fs.pos[k]);
+          writeTransform(node, pos);
+          if (count) writeDigit(node, Math.round(pos) % 10);
+          writeLead(node, fs.lead[k] === 1);
+          node.reel = fs.reel[k] === 1;
+          setIn(node, fs.inn[k], colW);
+          continue;
+        }
+        setIn(node, staticPresence(node, fs, q, signInn), node.w);
+      }
+    },
+
+    rest,
+
+    displayed(): DisplayState | null {
+      if (destroyed) return null;
+      let n = 0;
+      for (const node of seq) if (node.kind === 'digit' && node.place + 1 > n) n = node.place + 1;
+      const pos: number[] = new Array<number>(n).fill(0);
+      const inn: number[] = new Array<number>(n).fill(0);
+      const reel: boolean[] = new Array<boolean>(n).fill(false);
+      let sigma: number | null = null;
+      let ovf: number | null = null;
+      // Without a sign / overflow node (e.g. accounting parentheses), the tokens
+      // tied to that channel carry it.
+      let tiedSigma = 0;
+      let tiedOvf = 0;
+      for (const node of seq) {
+        if (node.kind === 'digit') {
+          pos[node.place] = node.pos;
+          inn[node.place] = node.inn;
+          reel[node.place] = node.reel;
+        } else if (node.kind === 'sign') {
+          sigma = node.negative ? node.inn : 0;
+        } else if (node.role === 'overflow') {
+          ovf = node.inn;
+        } else if (node.tie && node.presence !== 'absent') {
+          if (node.tie.kind === 'sign') tiedSigma = Math.max(tiedSigma, node.inn);
+          else if (node.tie.kind === 'overflow') tiedOvf = Math.max(tiedOvf, node.inn);
+        }
+      }
+      return { pos, inn, sigma: sigma ?? tiedSigma, ovf: ovf ?? tiedOvf, reel };
+    },
+
+    probe(): Element | null {
+      if (destroyed) return null;
+      for (const node of seq) if (node.kind === 'digit') return node.sizer;
+      return null;
+    },
+
+    destroy(): void {
+      if (destroyed) return;
+      destroyed = true;
+      moving = false;
+      for (const node of seq) node.el.remove();
+      seq = [];
+      byKey.clear();
+      owned.clear();
+      const fallback = adopted;
+      adopted = null;
+      if (fallback && !adoptedWasHidden) fallback.removeAttribute('hidden');
+    }
+  };
 }
