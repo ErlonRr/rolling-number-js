@@ -524,6 +524,27 @@ describe('<rolling-number> 1.3 attributes and properties', () => {
     expect(el.max).toBe(99.75);
   });
 
+  it('max is floored to the fraction digits in use, as displayed (no float error)', async () => {
+    const el = mount('<rolling-number value="500" max="99.999" decimals="2"></rolling-number>');
+    expect(el.max).toBe(99.99);
+    await settle(el);
+    expect(digitsOf(el)).toBe('9999'); // the display: 99.99
+    el.decimals = 1;
+    expect(el.max).toBe(99.9);
+    // Products that land just below an integer in binary floating point.
+    for (const [max, decimals, read] of [['0.29', '2', 0.29], ['543316.7', '2', 543316.7], ['8.2', '1', 8.2], ['1e-7', '2', 0], ['1e21', '0', 1e21]] as const) {
+      el.setAttribute('max', max);
+      el.setAttribute('decimals', decimals);
+      expect(el.max).toBe(read);
+    }
+    // Before connection (decimals unset = auto): floored to an integer, as in 1.2.
+    const detached = document.createElement('rolling-number');
+    detached.setAttribute('max', '99.999');
+    expect(detached.max).toBe(99);
+    detached.decimals = 2;
+    expect(detached.max).toBe(99.99);
+  });
+
   it('no-interpolate: present → interpolate false; the value "false" counts as absent', () => {
     const el = mount('<rolling-number value="1" no-interpolate></rolling-number>');
     const core = coreOf(el);

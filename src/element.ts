@@ -498,7 +498,10 @@ export class RollingNumberElement extends HTMLElementBase {
   get max(): number | null {
     const max = this.normalized('max');
     if (max === null) return null;
-    return this.decimals ? max : Math.floor(max);
+    const f = this.decimals || 0;
+    // Floored on the decimal digits, as displayed (`0.29 * 100` is 28.999…): shift with the exponent.
+    const a = Math.floor(+(max + 'e' + f));
+    return (Number.isNaN(a) ? Math.floor(max * 10 ** f) : a) / 10 ** f;
   }
 
   set max(val: number | null | undefined) {
