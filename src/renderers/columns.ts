@@ -97,6 +97,12 @@ const magnitudeDigits = (A: number): string => String(Math.abs(Math.round(A)) ||
 const digitAt = (s: string, k: number): number => (k < s.length ? s.charCodeAt(s.length - 1 - k) - 48 : 0);
 const pxText = (w: number): string => String(Math.round(w * 1000) / 1000) + 'px';
 
+/** The direct `[data-rn-ssr]` child of `host` (an SSR fallback to adopt, §8.3), if any. Shared with the text renderer. */
+export function ssrChild(host: Element): Element | null {
+  for (let el = host.firstElementChild; el; el = el.nextElementSibling) if (el.hasAttribute('data-rn-ssr')) return el;
+  return null;
+}
+
 /** Removes inline properties and the `style` attribute once it is empty. */
 function removeStyle(el: HTMLElement, ...props: string[]): void {
   const style = el.style;
@@ -158,19 +164,15 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
    * fallback child exists.
    */
   const adopt = (): void => {
-    if (!adoptWanted || adopted) return;
-    for (let el = host.firstElementChild; el; el = el.nextElementSibling) {
-      if (el.hasAttribute('data-rn-ssr')) {
-        adopted = el;
-        adoptedWasHidden = el.hasAttribute('hidden');
-        if (!adoptedWasHidden) el.setAttribute('hidden', '');
-        unwatch();
-        let ref = el.nextSibling;
-        while (ref && owned.has(ref)) ref = ref.nextSibling;
-        reorder(seq, ref);
-        return;
-      }
-    }
+    const el = adoptWanted && !adopted ? ssrChild(host) : null;
+    if (!el) return;
+    adopted = el;
+    adoptedWasHidden = el.hasAttribute('hidden');
+    if (!adoptedWasHidden) el.setAttribute('hidden', '');
+    unwatch();
+    let ref = el.nextSibling;
+    while (ref && owned.has(ref)) ref = ref.nextSibling;
+    reorder(seq, ref);
   };
 
   const glyph = (d: number): string => (glyphs ? glyphs[d] : String(d));

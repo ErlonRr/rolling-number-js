@@ -399,19 +399,48 @@ describe('text renderer: writes per host type', () => {
     }
   });
 
-  it('mount ignores adopt (no SSR fallback handling in text mode)', () => {
-    const span = makeHost('span');
-    const fallback = document.createElement('span');
+  // SSR adoption (§8.3) in text mode: the fallback is hidden, the owned Text node shows the value.
+  it.each([
+    ['span (mode text)', () => makeHost('span'), 'span'],
+    ['SVG text', () => svg('text'), 'tspan']
+  ] as const)('mount(adopt) hides a direct [data-rn-ssr] child of a %s and restores it on destroy', (_, make, tag) => {
+    const host = make();
+    const fallback = host.appendChild(document.createElementNS(host.namespaceURI, tag));
+    fallback.setAttribute('class', 'rn-ssr');
     fallback.setAttribute('data-rn-ssr', '');
     fallback.textContent = '5';
-    span.appendChild(fallback);
     const fmt = fakeFormatter();
-    const r = create(span, fmt);
+    const r = create(host, fmt);
     r.mount(rs(fmt, 5), true);
-    expect(fallback.hasAttribute('hidden')).toBe(false);
-    expect(span.lastChild?.nodeType).toBe(3);
+    expect(fallback.hasAttribute('hidden')).toBe(true);
+    expect(host.firstChild).toBe(fallback);
+    expect(host.lastChild?.nodeType).toBe(3);
+    expect(host.lastChild?.textContent).toBe('<5>');
+    r.frame(fs(6));
+    expect(host.lastChild?.textContent).toBe('<6>');
+    expect(fallback.textContent).toBe('5');
     r.destroy();
-    expect(Array.from(span.childNodes)).toEqual([fallback]);
+    expect(Array.from(host.childNodes)).toEqual([fallback]);
+    expect(fallback.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('adopt: keeps an already hidden fallback hidden, ignores nested ones and adopt = false', () => {
+    const fmt = fakeFormatter();
+    const a = makeHost('span');
+    a.innerHTML = '<span class="rn-ssr" data-rn-ssr hidden>1</span>';
+    create(a, fmt).mount(rs(fmt, 1), true);
+    renderers.splice(0).forEach((r) => r.destroy());
+    expect(a.firstElementChild!.hasAttribute('hidden')).toBe(true);
+
+    const b = makeHost('span');
+    b.innerHTML = '<b><span class="rn-ssr" data-rn-ssr>1</span></b>';
+    create(b, fmt).mount(rs(fmt, 1), true);
+    expect(b.querySelector('[data-rn-ssr]')!.hasAttribute('hidden')).toBe(false);
+
+    const c = makeHost('span');
+    c.innerHTML = '<span class="rn-ssr" data-rn-ssr>1</span>';
+    create(c, fmt).mount(rs(fmt, 1), false);
+    expect(c.firstElementChild!.hasAttribute('hidden')).toBe(false);
   });
 });
 

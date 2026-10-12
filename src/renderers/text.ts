@@ -21,6 +21,7 @@ import type {
   DisplayState, FrameState, Formatter, MotionLayout, Renderer, RestState
 } from '../internal/contracts';
 import type { RollingNumberMode } from '../types';
+import { ssrChild } from './columns';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -96,9 +97,10 @@ function roundDisplay(a: number): number {
  *   node. When the host contains only text at mount, that text is detached,
  *   replaced and put back on destroy; otherwise the node is appended.
  *
- * `mount(rest, adopt)` ignores `adopt`: SSR fallback adoption (§8.3) is a
- * columns-mode concept, and text-mode hosts get no `[data-rn-ssr]` fallback
- * (Vue `getSSRProps` returns `{}` for them).
+ * `mount(rest, adopt)` with `adopt` (§8.3, Text-node hosts): a direct
+ * `[data-rn-ssr]` child gets `hidden` (restored on destroy) and the owned
+ * Text node is appended after it. Form controls have no such child (an
+ * `<option>`'s children are replaced by its `.text` write).
  */
 export function createTextRenderer(host: Element, doc: Document, fmt: Formatter): Renderer {
   const name = htmlName(host);
@@ -111,6 +113,8 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
   let node: Text | null = null;
   /** The host's text nodes replaced by `node`, restored on destroy. */
   let saved: Node[] | null = null;
+  /** Adopted SSR fallback (`node` target), unhidden on destroy unless it was hidden already. */
+  let fallback: Element | null = null;
   /** Last string written (or found on a control when a write was first deferred): the blur guard. */
   let last: string | null = null;
   /** Final string waiting for blur. */
@@ -212,9 +216,15 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
   return {
     kind: 'text',
     mount(r: RestState, adopt: boolean): void {
-      void adopt;
       if (dead) return;
-      if (target === 'node') attach();
+      if (target === 'node') {
+        const el = adopt ? ssrChild(host) : null;
+        if (el && !el.hasAttribute('hidden')) {
+          el.setAttribute('hidden', '');
+          fallback = el;
+        }
+        attach();
+      }
       rest(r);
     },
     setFormatter(f: Formatter): void {
@@ -254,6 +264,8 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
         if (parent) parent.removeChild(own);
       }
       saved = null;
+      fallback?.removeAttribute('hidden');
+      fallback = null;
     }
   };
 }
