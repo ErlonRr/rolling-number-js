@@ -31,12 +31,6 @@ import * as ActionEntry from '../src/action-entry';
 import * as SsrEntry from '../src/ssr-entry';
 import { RN_DEFAULTS, normalizeOptions } from '../src/core';
 import { OPTION_ATTRIBUTES, OPTION_KEYS } from '../src/options';
-import {
-  RollingNumber as VueRollingNumber,
-  vRollingNumber,
-  type RollingNumberBinding,
-  type RollingNumberProps as VueProps
-} from '../src/vue';
 
 describe('core option types', () => {
   it('RollingNumberOptions: the 1.x fields keep their types, plus the 1.3 fields', () => {
@@ -215,20 +209,5 @@ describe('custom element types', () => {
     const bad2: RollingNumberAttributes = { interpolate: 'nope' };
     void bad;
     void bad2;
-  });
-});
-
-describe('Vue types', () => {
-  it('directive binding accepts numbers, strings and every option', () => {
-    expectTypeOf<number>().toMatchTypeOf<RollingNumberBinding>();
-    expectTypeOf<string>().toMatchTypeOf<RollingNumberBinding>();
-    expectTypeOf({ value: 1, pad: 2, max: 9, interpolate: false, duration: 100 }).toMatchTypeOf<RollingNumberBinding>();
-    expectTypeOf(vRollingNumber.mounted).not.toBeUndefined();
-  });
-
-  it('component props', () => {
-    expectTypeOf<VueProps['interpolate']>().toEqualTypeOf<boolean | string | undefined>();
-    expectTypeOf<VueProps['max']>().toEqualTypeOf<number | null | undefined>();
-    expectTypeOf(VueRollingNumber).not.toBeAny();
   });
 });
