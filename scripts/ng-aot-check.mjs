@@ -2,9 +2,12 @@
 //
 // 1. Compiles a tiny standalone component that uses `[rollingNumber]` with ngc
 //    (strictTemplates), resolving `rolling-number/angular` through the
-//    package's own exports and declarations, the way an app does. A second
-//    component with an invalid binding must fail to compile, which proves the
-//    inputs are type-checked.
+//    package's own exports and declarations, the way an app does. It covers the
+//    1.x inputs, the v1.3 `rn*` inputs (bound and as attribute strings), the
+//    `rnStart`/`rnEnd` outputs (`$event.detail.value`), the native `(rn-end)`
+//    event and the `#c="rollingNumber"` template reference. A second component
+//    with invalid bindings must fail to compile with one error per binding,
+//    which proves the inputs and outputs are type-checked.
 // 2. Links dist/angular.js with the Angular linker Babel plugin
 //    (`unknownDeclarationVersionHandling: 'error'`), as the Angular CLI does for
 //    libraries, and checks that no partial declaration (ɵɵngDeclare*) is left.
@@ -62,18 +65,39 @@ for (const dep of ['@angular', 'rxjs', 'tslib']) {
 }
 
 const component = (name, template) => `import { Component } from '@angular/core';
-import { RollingNumberDirective } from 'rolling-number/angular';
+import {
+  RollingNumberDirective,
+  type RollingNumberEasing,
+  type RollingNumberEvent,
+  type RollingNumberFormat,
+  type RollingNumberLabelInfo,
+  type RollingNumberSettled
+} from 'rolling-number/angular';
+
+/** A PrimeNG p-inputNumber-like component: a host element that renders an <input>. */
+@Component({ selector: 'p-input-number', standalone: true, template: '<input inputmode="decimal" />' })
+export class FakeInputNumberComponent {}
 
 @Component({
   selector: 'app-${name}',
   standalone: true,
-  imports: [RollingNumberDirective],
+  imports: [RollingNumberDirective, FakeInputNumberComponent],
   template: \`${template}\`
 })
 export class ${name[0].toUpperCase()}${name.slice(1)}Component {
   count = 5;
   label: string | null = '7';
   flag = false;
+  price = 1234.5;
+  easing: RollingNumberEasing = 'ease-out-expo';
+  locales: readonly string[] = ['de-CH', 'en'];
+  format: RollingNumberFormat = { style: 'unit', unit: 'kilometer-per-hour' };
+  labelFn = (info: RollingNumberLabelInfo): string => info.text + ' points';
+  last: number | null = null;
+  settled: Promise<RollingNumberSettled> | null = null;
+  onValue(value: number): void { this.last = value; }
+  onEvent(event: RollingNumberEvent): void { this.last = event.detail.from; }
+  keep(settled: Promise<RollingNumberSettled>): void { this.settled = settled; }
 }
 `;
 
@@ -85,10 +109,48 @@ writeFileSync(
     <span [rollingNumber]="count" [pad]="2" [max]="null" [duration]="600" interpolate></span>
     <span rollingNumber="42" pad="3" max="99" duration="600" interpolate="false"></span>
     <span [rollingNumber]="label" [interpolate]="flag" [max]="count"></span>
+    <span rollingNumber="7" rnPad="3" rnMax="99" rnInterpolate="false" rnDuration="800" rnEasing="cubic-bezier(0.2, 1, 0.3, 1)"
+          rnDecimals="2" rnLocale="de-DE, en" rnFormat='{"style":"currency","currency":"EUR"}' rnPrefixText="~"
+          rnSuffixText=" pts" rnOverflowSuffix="+" rnMode="columns" rnFrom="0" rnTrigger="visible" rnLabel="{value} unread"
+          rnLive rnInjectStyles="false" rnTarget="host"></span>
+    <p-input-number [rollingNumber]="price" rnTarget="input" rnLive="assertive"></p-input-number>
+    <span [rollingNumber]="price" [rnPad]="null" [rnMax]="count" [rnInterpolate]="flag" [rnDuration]="null" [duration]="undefined"
+          [rnEasing]="easing" [rnDecimals]="2" [rnLocale]="locales" [rnFormat]="{ style: 'currency', currency: 'EUR', currencyDisplay: 'code' }"
+          [rnPrefixText]="label" [rnSuffixText]="null" [rnOverflowSuffix]="'+'" [rnMode]="'text'" [rnFrom]="count"
+          [rnTrigger]="'immediate'" [rnLabel]="labelFn" [rnLive]="flag" [rnInjectStyles]="flag" [rnTarget]="'auto'"
+          (rnStart)="onValue($event.detail.value)" (rnEnd)="onEvent($event)" (rn-end)="onEvent($event)"
+          #c="rollingNumber"></span>
+    <span [rollingNumber]="count" [rnFormat]="format"></span>
+    <button (click)="keep(c.setValue(count + 1, { motion: 'roll', duration: 300 })); c.finish(); keep(c.whenSettled())">
+      {{ c.getDisplayValue() }} {{ c.core?.getText() }} {{ c.duration + 1 }} {{ c.rnDuration ?? 'auto' }}
+    </button>
   `
   )
 );
-writeFileSync(join(work, 'bad.component.ts'), component('bad', `<span [rollingNumber]="count" [pad]="{ wrong: true }"></span>`));
+writeFileSync(
+  join(work, 'bad.component.ts'),
+  component(
+    'bad',
+    `
+    <span [rollingNumber]="count" [pad]="{ wrong: true }"></span>
+    <span rollingNumber="1" rnMode="sideways"></span>
+    <span rollingNumber="1" [rnFormat]="{ style: 'currency' }"></span>
+    <span rollingNumber="1" (rnEnd)="onValue($event.detail.nope)"></span>
+    <span rollingNumber="1" (rn-end)="onValue($event.detail.missing)"></span>
+    <span rollingNumber="1" #b="rollingNumber" (click)="b.setValue('5')"></span>
+  `
+  )
+);
+
+/** Diagnostics the bad component must produce: one per invalid binding. */
+const expectedErrors = [
+  ['an object bound to [pad]', /wrong/],
+  ['an unknown rnMode attribute value', /sideways/],
+  ['a currency format without currency', /currency/],
+  ['an unknown property of $event.detail in (rnEnd)', /'nope'/],
+  ['an unknown property of $event.detail in the native (rn-end) event', /'missing'/],
+  ['a string passed to setValue() through the exportAs reference', /'string' is not assignable to parameter of type 'number'|"5"/]
+];
 
 function writeTsconfig(file, entry) {
   writeFileSync(
@@ -136,11 +198,14 @@ check('ngc (strictTemplates) compiles a standalone component using [rollingNumbe
   assert(/RollingNumberDirective/.test(out), 'the directive is not referenced by the compiled component');
 });
 
-check('ngc (strictTemplates) rejects an invalid input binding', () => {
+check('ngc (strictTemplates) rejects invalid input, output and exportAs bindings', () => {
   const errors = compile('bad');
-  const text = formatDiagnostics(errors);
-  assert(errors.length > 0, 'an object bound to [pad] was accepted: the directive inputs are not type-checked');
-  assert(/pad|wrong/.test(text), `unexpected diagnostics:\n${text}`);
+  const messages = errors.map((d) => formatDiagnostics([d]));
+  const text = messages.join('\n');
+  for (const [what, pattern] of expectedErrors) {
+    assert(messages.some((m) => pattern.test(m)), `${what} was accepted: not type-checked.\nDiagnostics:\n${text}`);
+  }
+  assert(errors.length === expectedErrors.length, `expected ${expectedErrors.length} errors, got ${errors.length}:\n${text}`);
 });
 
 // --- Linker
@@ -195,9 +260,19 @@ check('the linked directive loads without @angular/compiler (ɵdir / ɵfac)', ()
     if (JSON.stringify(dir.selectors) !== JSON.stringify([['', 'rollingNumber', '']])) {
       throw new Error('unexpected selectors ' + JSON.stringify(dir.selectors));
     }
-    for (const input of ['rollingNumber', 'pad', 'max', 'interpolate', 'duration']) {
+    const inputs = [
+      'rollingNumber', 'pad', 'max', 'interpolate', 'duration',
+      'rnPad', 'rnMax', 'rnInterpolate', 'rnDuration', 'rnEasing', 'rnDecimals', 'rnLocale', 'rnFormat',
+      'rnPrefixText', 'rnSuffixText', 'rnOverflowSuffix', 'rnMode', 'rnFrom', 'rnTrigger', 'rnLabel', 'rnLive',
+      'rnInjectStyles', 'rnTarget'
+    ];
+    for (const input of inputs) {
       if (!(input in dir.inputs)) throw new Error('missing input ' + input);
     }
+    for (const output of ['rnStart', 'rnEnd']) {
+      if (!(output in dir.outputs)) throw new Error('missing output ' + output);
+    }
+    if (JSON.stringify(dir.exportAs) !== '["rollingNumber"]') throw new Error('unexpected exportAs ' + JSON.stringify(dir.exportAs));
     if (!dir.standalone) throw new Error('the directive is not standalone');
   `;
   writeFileSync(join(work, 'probe.mjs'), probe);

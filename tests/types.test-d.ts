@@ -37,7 +37,6 @@ import {
   type RollingNumberBinding,
   type RollingNumberProps as VueProps
 } from '../src/vue';
-import { RollingNumberDirective } from '../src/angular';
 
 describe('core option types', () => {
   it('RollingNumberOptions: the 1.x fields keep their types, plus the 1.3 fields', () => {
@@ -231,25 +230,5 @@ describe('Vue types', () => {
     expectTypeOf<VueProps['interpolate']>().toEqualTypeOf<boolean | string | undefined>();
     expectTypeOf<VueProps['max']>().toEqualTypeOf<number | null | undefined>();
     expectTypeOf(VueRollingNumber).not.toBeAny();
-  });
-});
-
-describe('Angular types', () => {
-  it('inputs read typed values and accept attribute strings', () => {
-    const dir = null as unknown as RollingNumberDirective;
-    expectTypeOf(dir.pad).toBeNumber();
-    expectTypeOf(dir.max).toEqualTypeOf<number | null>();
-    expectTypeOf(dir.interpolate).toBeBoolean();
-    expectTypeOf(dir.duration).toBeNumber();
-    expectTypeOf(dir.valueInput).toEqualTypeOf<number | string>();
-    if (dir) {
-      dir.pad = '3';
-      dir.max = null;
-      dir.interpolate = '';
-      dir.duration = undefined;
-      dir.valueInput = '42';
-      // @ts-expect-error boolean is not a valid pad
-      dir.pad = true;
-    }
   });
 });
