@@ -148,7 +148,7 @@
     "dist"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --config vite.config.demo.ts",
     "build": "tsc && pnpm run build:ngc && vite build && vite build -c vite.config.iife.ts && node scripts/build-types.mjs && pnpm run cem",
     "build:ngc": "node -e \"fs.rmSync('node_modules/.cache/rolling-number/ngc',{recursive:true,force:true})\" && ngc -p tsconfig.build.json",
     "cem": "cem analyze --config custom-elements-manifest.config.mjs && node scripts/vscode-custom-data.mjs",

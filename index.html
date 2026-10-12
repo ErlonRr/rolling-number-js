@@ -1,482 +1,884 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rolling Number JS — Ultra-Fast Rolling Number Animation</title>
+  <title>rolling-number — animated odometer counter for any element and framework</title>
+  <meta name="description" content="Zero-dependency animated number counter: Web Component, vanilla JS, React, Vue, Angular and Svelte. Works in spans, buttons, inputs, textareas and SVG." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-  
+
   <style>
     :root {
       --bg-color: #0e0b16;
       --card-bg: rgba(22, 18, 36, 0.75);
+      --panel-bg: rgba(14, 11, 22, 0.85);
       --border-color: rgba(255, 255, 255, 0.08);
       --accent-color: #8b5cf6;
+      --accent-soft: rgba(139, 92, 246, 0.15);
       --accent-gradient: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
       --text-color: #f3f1f8;
       --text-muted: #9d99ab;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
+
+    html { scroll-behavior: smooth; }
 
     body {
       font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: var(--bg-color);
       color: var(--text-color);
       min-height: 100vh;
-      padding: 2.5rem 1rem;
+      padding: 2.5rem 1rem 4rem;
       display: flex;
       flex-direction: column;
       align-items: center;
-      background-image: 
+      background-image:
         radial-gradient(circle at 15% 15%, rgba(139, 92, 246, 0.15) 0%, transparent 45%),
         radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.15) 0%, transparent 45%);
+      background-attachment: fixed;
     }
 
-    .container {
-      max-width: 1000px;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 2rem;
-    }
+    .container { max-width: 1100px; width: 100%; display: flex; flex-direction: column; gap: 2rem; }
 
-    header {
-      margin-bottom: 0.5rem;
-    }
+    /* ── Header ─────────────────────────────────────────────── */
+    .header-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .lang-switcher { display: flex; gap: 0.25rem; background: var(--card-bg); padding: 0.25rem; border-radius: 8px; border: 1px solid var(--border-color); }
+    .lang-btn { background: transparent; border: none; color: var(--text-muted); padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .lang-btn:hover { background: rgba(255, 255, 255, 0.06); transform: none; box-shadow: none; }
+    .lang-btn.active { background: var(--accent-color); color: white; }
+    .header-links { display: flex; gap: 0.5rem; }
+    .pill-link { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-color); text-decoration: none; font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); transition: border-color 0.2s; }
+    .pill-link:hover { border-color: var(--accent-color); }
+    h1 { font-size: clamp(2.2rem, 6vw, 3rem); font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+    p.subtitle { color: var(--text-muted); font-size: 1.1rem; line-height: 1.5; max-width: 760px; }
+    .install { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .install code { font-size: 0.95rem; padding: 0.55rem 0.85rem; border: 1px solid var(--border-color); }
+    .install small { color: var(--text-muted); }
 
-    h1 {
-      font-size: 3rem;
-      font-weight: 800;
-      background: var(--accent-gradient);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.02em;
-    }
+    nav.sections { position: sticky; top: 0.75rem; z-index: 10; display: flex; gap: 0.4rem; flex-wrap: wrap; padding: 0.4rem; background: rgba(14, 11, 22, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 12px; }
+    nav.sections a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; font-weight: 600; padding: 0.4rem 0.8rem; border-radius: 8px; }
+    nav.sections a:hover { color: #fff; background: var(--accent-soft); }
 
-    p.subtitle {
-      color: var(--text-muted);
-      font-size: 1.1rem;
-      line-height: 1.5;
-    }
+    /* ── Cards ──────────────────────────────────────────────── */
+    .card { background: var(--card-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 16px; padding: 2rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4); scroll-margin-top: 4.5rem; }
+    .card-title { font-size: 1.35rem; font-weight: 600; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .card-intro { color: var(--text-muted); font-size: 0.98rem; line-height: 1.55; margin-bottom: 1.5rem; max-width: 820px; }
+    .badge { font-size: 0.75rem; background: var(--accent-soft); color: #c084fc; padding: 0.25rem 0.65rem; border-radius: 99px; border: 1px solid rgba(168, 85, 247, 0.3); font-weight: 500; }
 
-    .card {
-      background: var(--card-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      padding: 2rem;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-      transition: border-color 0.2s;
-    }
+    code { font-family: var(--mono); background: rgba(0, 0, 0, 0.4); padding: 0.15rem 0.4rem; border-radius: 4px; color: #e2e8f0; font-size: 0.88em; }
 
-    .card:hover {
-      border-color: rgba(139, 92, 246, 0.25);
-    }
+    /* ── Controls ───────────────────────────────────────────── */
+    button { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); color: #fff; padding: 0.6rem 1rem; border-radius: 8px; font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer; transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
+    button:hover { background: var(--accent-color); border-color: var(--accent-color); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35); }
+    button:active { transform: translateY(0); }
+    button.primary { background: var(--accent-gradient); border-color: transparent; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #c084fc; outline-offset: 2px; }
 
-    .card-title {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 1.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+    input[type="number"], input[type="text"], select, textarea {
+      background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 0.55rem;
+      color: #fff; font-family: inherit; font-size: 0.92rem; width: 100%; transition: border-color 0.2s;
     }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent-color); }
+    input:disabled, select:disabled { opacity: 0.45; }
+    select { cursor: pointer; }
+    input[type="range"] { width: 100%; accent-color: var(--accent-color); }
+    input[type="checkbox"] { accent-color: var(--accent-color); width: 1rem; height: 1rem; }
 
-    /* Counter Display Hero */
-    .hero-display {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 3.5rem 1rem;
-      background: rgba(14, 11, 22, 0.85);
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
-      margin-bottom: 1.5rem;
-      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.5);
+    .field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+    .field > span, .field > label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+    .hint { font-size: 0.75rem; color: var(--text-muted); opacity: 0.85; }
+    .check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--text-color); cursor: pointer; }
+
+    .seg { display: inline-flex; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.2rem; gap: 0.2rem; }
+    .seg button { padding: 0.35rem 0.75rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; }
+    .seg button:hover { background: rgba(255, 255, 255, 0.06); color: #fff; transform: none; box-shadow: none; }
+    .seg button[aria-pressed="true"] { background: var(--accent-color); color: #fff; }
+
+    /* ── Playground ─────────────────────────────────────────── */
+    .playground { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+    .hero-display { display: flex; justify-content: center; align-items: center; min-height: 190px; padding: 2rem 1rem; background: var(--panel-bg); border-radius: 12px; border: 1px solid var(--border-color); box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.5); overflow: hidden; }
+    /* A filter glows around the whole counter; a text-shadow would be clipped by each digit window (see --rn-bleed). */
+    .large-counter { font-family: var(--mono); font-size: clamp(2.6rem, 7vw, 4.5rem); font-weight: 700; letter-spacing: -0.02em; color: #fff; filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.55)); }
+    .value-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin-top: 1rem; }
+    .value-input { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .value-input input { flex: 1; font-family: var(--mono); }
+    .log { margin-top: 1rem; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem 0.9rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.6; color: var(--text-muted); min-height: 7.8rem; }
+    .log b { color: #c084fc; font-weight: 700; }
+    .log .end { color: #86efac; }
+    .log-title { font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.35rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; }
+
+    .groups { display: flex; flex-direction: column; gap: 1rem; }
+    fieldset.group { border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; background: rgba(255, 255, 255, 0.02); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
+    fieldset.group legend { padding: 0 0.4rem; font-size: 0.85rem; font-weight: 600; color: #c084fc; }
+    fieldset.group .wide { grid-column: 1 / -1; }
+
+    /* ── Code blocks ────────────────────────────────────────── */
+    .code-panel { margin-top: 1.5rem; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; background: rgba(8, 6, 14, 0.9); }
+    .tabs { display: flex; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid var(--border-color); overflow-x: auto; align-items: center; }
+    .tabs button { padding: 0.4rem 0.8rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; white-space: nowrap; }
+    .tabs button:hover { background: rgba(255, 255, 255, 0.06); color: #fff; transform: none; box-shadow: none; }
+    .tabs button[aria-selected="true"] { background: var(--accent-soft); color: #e9d5ff; }
+    .tabs .spacer { flex: 1; }
+    .tabs .copy { border: 1px solid var(--border-color); }
+    pre.code, .log, .snippet, code { font-variant-ligatures: none; }
+    pre.code { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; color: #e2e8f0; white-space: pre; tab-size: 2; }
+    .code-note { padding: 0.6rem 1.1rem; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--border-color); }
+
+    /* ── Anywhere ───────────────────────────────────────────── */
+    .toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+    .mini { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .mini h3 { font-size: 0.95rem; font-weight: 600; display: flex; justify-content: space-between; gap: 0.5rem; }
+    .mini h3 code { font-size: 0.75rem; color: #c084fc; }
+    .mini .stage { min-height: 64px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
+    .mini .snippet { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; word-break: break-word; }
+    .mini table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    .mini td { padding: 0.3rem 0.2rem; border-bottom: 1px solid var(--border-color); }
+    .mini td.num { text-align: right; font-family: var(--mono); }
+    .cart { display: inline-flex; align-items: center; gap: 0.5rem; }
+    .cart .count { background: #ef4444; color: #fff; border-radius: 99px; padding: 0.05rem 0.55rem; font-size: 0.85rem; font-weight: 700; font-family: var(--mono); }
+    .mini input, .mini textarea, .mini select { font-family: var(--mono); text-align: center; }
+    .mini textarea { resize: none; text-align: left; }
+    .mini svg { width: 100%; max-width: 200px; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+    .stat { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; text-align: center; }
+    .stat .n { font-family: var(--mono); font-size: 2rem; font-weight: 700; }
+    .stat .l { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+    /* ── Styling ────────────────────────────────────────────── */
+    .styling { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+    .style-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem; padding: 2rem 1rem; background: var(--panel-bg); border-radius: 12px; border: 1px solid var(--border-color); min-height: 240px; }
+    #styleCounter { font-size: clamp(2.6rem, 7vw, 4rem); font-weight: 700; color: #fff; }
+    #styleCounter.glow { text-shadow: 0 0 18px rgba(192, 132, 252, 0.95), 0 0 42px rgba(139, 92, 246, 0.7); }
+    #styleCounter.gradient { color: transparent; }
+    .style-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+
+    /* ── Frameworks ─────────────────────────────────────────── */
+    .live-islands { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .island { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .island .label { font-size: 0.85rem; color: var(--text-muted); }
+    .island .big { font-family: var(--mono); font-size: 1.8rem; font-weight: 700; }
+    .island .btns { display: flex; gap: 0.4rem; }
+
+    /* ── Performance ────────────────────────────────────────── */
+    .stress-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 0.5rem; max-height: 300px; overflow-y: auto; padding: 0.75rem; background: var(--panel-bg); border-radius: 10px; border: 1px solid var(--border-color); }
+    .stress-cell { background: rgba(255, 255, 255, 0.03); padding: 0.5rem; border-radius: 6px; text-align: center; font-family: var(--mono); font-size: 1.1rem; border: 1px solid rgba(255, 255, 255, 0.04); }
+
+    footer { color: var(--text-muted); font-size: 0.85rem; text-align: center; line-height: 1.6; }
+    footer a { color: #c084fc; }
+
+    @media (max-width: 900px) {
+      .playground, .styling { grid-template-columns: minmax(0, 1fr); }
     }
-
-    .large-counter {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 4.75rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #ffffff;
-      text-shadow: 0 0 35px rgba(168, 85, 247, 0.45);
-    }
-
-    .controls {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
-    }
-
-    button {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border-color);
-      color: #fff;
-      padding: 0.75rem 1.25rem;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    button:hover {
-      background: var(--accent-color);
-      border-color: var(--accent-color);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35);
-    }
-
-    button:active {
-      transform: translateY(0);
-    }
-
-    .options-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      background: rgba(255, 255, 255, 0.02);
-      padding: 1.25rem;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.04);
-    }
-
-    .option-item {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    label {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    input[type="number"] {
-      background: rgba(14, 11, 22, 0.9);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 0.55rem;
-      color: #fff;
-      font-family: inherit;
-      font-size: 0.95rem;
-      transition: border-color 0.2s;
-    }
-
-    input[type="number"]:focus {
-      outline: none;
-      border-color: var(--accent-color);
-    }
-
-    /* Nx Grid Stress Test */
-    .stress-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-      gap: 0.5rem;
-      max-height: 300px;
-      overflow-y: auto;
-      padding: 0.75rem;
-      background: rgba(14, 11, 22, 0.85);
-      border-radius: 10px;
-      border: 1px solid var(--border-color);
-    }
-
-    .stress-cell {
-      background: rgba(255, 255, 255, 0.03);
-      padding: 0.5rem;
-      border-radius: 6px;
-      text-align: center;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 1.1rem;
-      border: 1px solid rgba(255, 255, 255, 0.04);
-    }
-
-    .badge {
-      font-size: 0.75rem;
-      background: rgba(139, 92, 246, 0.15);
-      color: #c084fc;
-      padding: 0.25rem 0.65rem;
-      border-radius: 99px;
-      border: 1px solid rgba(168, 85, 247, 0.3);
-      font-weight: 500;
-    }
-
-    code {
-      font-family: 'JetBrains Mono', monospace;
-      background: rgba(0, 0, 0, 0.4);
-      padding: 0.2rem 0.4rem;
-      border-radius: 4px;
-      color: #e2e8f0;
-    }
-
-    .header-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.75rem;
-    }
-
-    .lang-switcher {
-      display: flex;
-      gap: 0.25rem;
-      background: var(--card-bg);
-      padding: 0.25rem;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-    }
-
-    .lang-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      padding: 0.3rem 0.6rem;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .lang-btn.active {
-      background: var(--accent-color);
-      color: white;
-    }
-
-    .github-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      color: var(--text-color);
-      text-decoration: none;
-      font-size: 0.85rem;
-      font-weight: 600;
-      padding: 0.4rem 0.8rem;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-      background: var(--card-bg);
-      transition: border-color 0.2s, transform 0.2s;
-    }
-
-    .github-link:hover {
-      border-color: var(--accent-color);
-      transform: translateY(-1px);
+    @media (max-width: 520px) {
+      .card { padding: 1.25rem; }
+      fieldset.group, .style-controls { grid-template-columns: minmax(0, 1fr); }
+      .value-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
 <body>
-
   <div class="container">
     <header>
       <div class="header-top">
-        <div class="lang-switcher">
-          <button id="btnLangEN" class="lang-btn active">EN</button>
-          <button id="btnLangIT" class="lang-btn">IT</button>
+        <div class="lang-switcher" role="group" aria-label="Language">
+          <button id="btnLangEN" class="lang-btn active" type="button">EN</button>
+          <button id="btnLangIT" class="lang-btn" type="button">IT</button>
         </div>
-        <a href="https://github.com/ErlonRr/rolling-number-js" target="_blank" rel="noopener noreferrer" class="github-link">
-          <span>GitHub</span> 🐙
-        </a>
+        <div class="header-links">
+          <a class="pill-link" href="https://www.npmjs.com/package/rolling-number" target="_blank" rel="noopener noreferrer">npm</a>
+          <a class="pill-link" href="https://github.com/ErlonRr/rolling-number-js" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
       </div>
-      <h1>rolling-number-js</h1>
-      <p class="subtitle" id="tSubtitle">An ultra-fast, zero-dependency rolling number counter library & native Web Component</p>
+      <h1>rolling-number</h1>
+      <p class="subtitle" data-i18n="subtitle">An animated, odometer-style number counter. Zero dependencies, one API for the Web Component, vanilla JS, React, Vue, Angular and Svelte — and it works inside any element: text, buttons, table cells, inputs, textareas and SVG.</p>
+      <div class="install">
+        <code>npm i rolling-number</code>
+        <small data-i18n="installNote">Styles are injected automatically: no CSS import needed.</small>
+      </div>
     </header>
 
-    <!-- Main Interactive Demo -->
-    <section class="card">
-      <div class="card-title">
-        <span id="tDemoTitle">🎮 Interactive Demo</span>
-        <span class="badge">Web Component & Vanilla JS</span>
+    <nav class="sections" aria-label="Sections">
+      <a href="#playground" data-i18n="navPlayground">Playground</a>
+      <a href="#anywhere" data-i18n="navAnywhere">Any element</a>
+      <a href="#styling" data-i18n="navStyling">Styling</a>
+      <a href="#frameworks" data-i18n="navFrameworks">Frameworks</a>
+      <a href="#performance" data-i18n="navPerformance">Performance</a>
+    </nav>
+
+    <!-- ── 1. Playground ───────────────────────────────────── -->
+    <section class="card" id="playground">
+      <div class="card-title"><span data-i18n="pgTitle">Playground</span><span class="badge">&lt;rolling-number&gt;</span></div>
+      <p class="card-intro" data-i18n="pgIntro">Change a setting and the counter updates right away. The code below is generated from your settings, ready to copy for the framework you use.</p>
+
+      <div class="playground">
+        <div>
+          <div class="hero-display">
+            <rolling-number id="heroCounter" class="large-counter" value="1234" pad="4"></rolling-number>
+          </div>
+          <div class="value-controls">
+            <button type="button" data-step="1">+ 1</button>
+            <button type="button" data-step="100">+ 100</button>
+            <button type="button" data-step="-100">− 100</button>
+            <button type="button" id="btnRand" data-i18n="btnRandom">Random</button>
+            <button type="button" id="btnNeg" data-i18n="btnNegative">Negative</button>
+            <button type="button" id="btnZero">0</button>
+          </div>
+          <form class="value-input" id="valueForm">
+            <input type="number" id="valueInput" step="any" value="1234" aria-label="Value" />
+            <button type="submit" class="primary" data-i18n="btnSet">Set value</button>
+          </form>
+          <div class="log" aria-live="off">
+            <div class="log-title"><span data-i18n="logTitle">Events (rn-start / rn-end)</span><span id="logPromise"></span></div>
+            <div id="eventLog"></div>
+          </div>
+        </div>
+
+        <div class="groups">
+          <fieldset class="group">
+            <legend data-i18n="grpBasics">Basics</legend>
+            <div class="field wide">
+              <span data-i18n="optMotion">Motion</span>
+              <div class="seg" role="group" aria-label="Motion">
+                <button type="button" data-motion="count" aria-pressed="true" data-i18n="motionCount">Count through values</button>
+                <button type="button" data-motion="roll" aria-pressed="false" data-i18n="motionRoll">Roll each digit</button>
+              </div>
+            </div>
+            <label class="field"><span>pad</span><input type="number" id="optPad" min="1" max="12" value="4" /><span class="hint" data-i18n="hintPad">Minimum digits (leading zeros)</span></label>
+            <label class="field"><span>duration (ms)</span><input type="number" id="optDuration" min="0" max="5000" step="50" placeholder="auto" /><span class="hint" data-i18n="hintDuration">Empty = automatic</span></label>
+            <label class="field"><span>max</span><input type="number" id="optMax" min="0" placeholder="—" /><span class="hint" data-i18n="hintMax">Display limit, e.g. 99</span></label>
+            <label class="field"><span>overflowSuffix</span><input type="text" id="optOverflow" placeholder="+" maxlength="4" /><span class="hint" data-i18n="hintOverflow">Shown past max: “99+”</span></label>
+            <label class="field wide"><span>easing</span>
+              <select id="optEasing">
+                <option value="" data-i18n="easingAuto">auto</option>
+                <option>ease-out-cubic</option>
+                <option>odometer</option>
+                <option>ease-out-expo</option>
+                <option>ease-in-out</option>
+                <option>linear</option>
+                <option value="cubic-bezier(0.34, 1.56, 0.64, 1)">cubic-bezier(0.34, 1.56, 0.64, 1)</option>
+              </select>
+            </label>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend data-i18n="grpFormat">Format</legend>
+            <label class="field"><span>locale</span>
+              <select id="optLocale">
+                <option value="" data-i18n="localeNone">none (plain digits)</option>
+                <option>en-US</option>
+                <option>it-IT</option>
+                <option>de-DE</option>
+                <option>fr-FR</option>
+                <option>ja-JP</option>
+                <option>hi-IN</option>
+                <option>ar-EG</option>
+              </select>
+            </label>
+            <label class="field"><span>format.style</span>
+              <select id="optStyle">
+                <option value="" data-i18n="styleNumber">number</option>
+                <option value="currency">currency</option>
+                <option value="percent">percent</option>
+                <option value="unit">unit</option>
+              </select>
+            </label>
+            <label class="field"><span>format.currency</span>
+              <select id="optCurrency" disabled>
+                <option>EUR</option><option>USD</option><option>GBP</option><option>JPY</option><option>CHF</option>
+              </select>
+            </label>
+            <label class="field"><span>format.unit</span>
+              <select id="optUnit" disabled>
+                <option>kilometer-per-hour</option><option>celsius</option><option>kilogram</option><option>megabyte</option><option>liter</option>
+              </select>
+            </label>
+            <label class="field"><span>decimals</span><input type="number" id="optDecimals" min="0" max="6" placeholder="auto" /><span class="hint" data-i18n="hintDecimals">Fixed fraction digits</span></label>
+            <label class="field"><span>prefixText / suffixText</span>
+              <span style="display:flex; gap:0.4rem"><input type="text" id="optPrefix" placeholder="≈ " aria-label="prefixText" /><input type="text" id="optSuffix" placeholder=" pts" aria-label="suffixText" /></span>
+            </label>
+            <p class="wide hint" id="percentHint" hidden data-i18n="hintPercent">Percent multiplies by 100: value 0.25 shows 25%.</p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend data-i18n="grpA11y">Accessibility</legend>
+            <label class="check wide"><input type="checkbox" id="optLive" /> <span data-i18n="optLive">Announce settled values to screen readers (live: 'polite')</span></label>
+            <label class="field wide"><span>label</span><input type="text" id="optLabel" placeholder="{value} points" /><span class="hint" data-i18n="hintLabel">Accessible name; {value} is replaced by the formatted value</span></label>
+          </fieldset>
+        </div>
       </div>
 
-      <div class="hero-display">
-        <!-- Web Component Tag Demo -->
-        <rolling-number id="heroCounter" class="large-counter" value="1234" pad="4"></rolling-number>
+      <div class="code-panel" id="codePanel">
+        <div class="tabs" role="tablist" aria-label="Code">
+          <button type="button" role="tab" data-tab="html" aria-selected="true">HTML</button>
+          <button type="button" role="tab" data-tab="js" aria-selected="false">JavaScript</button>
+          <button type="button" role="tab" data-tab="react" aria-selected="false">React</button>
+          <button type="button" role="tab" data-tab="vue" aria-selected="false">Vue</button>
+          <button type="button" role="tab" data-tab="angular" aria-selected="false">Angular</button>
+          <button type="button" role="tab" data-tab="svelte" aria-selected="false">Svelte</button>
+          <span class="spacer"></span>
+          <button type="button" class="copy" id="btnCopy" data-i18n="btnCopy">Copy</button>
+        </div>
+        <pre class="code" id="codeOut"></pre>
+        <div class="code-note" id="codeNote"></div>
+      </div>
+    </section>
+
+    <!-- ── 2. Any element ─────────────────────────────────── -->
+    <section class="card" id="anywhere">
+      <div class="card-title"><span data-i18n="anyTitle">Works in any element</span><span class="badge">span · button · td · input · textarea · option · svg</span></div>
+      <p class="card-intro" data-i18n="anyIntro">The same counter attaches to whatever element you already have. Containers get animated digit columns; form fields, &lt;option&gt; and SVG text are animated as text, so the value stays a normal value (read-only or uncontrolled fields are recommended).</p>
+      <div class="toolbar">
+        <button type="button" class="primary" id="btnAnyNew" data-i18n="btnNewValues">New values</button>
+        <label class="check"><input type="checkbox" id="anyAuto" /> <span data-i18n="autoplay">Autoplay</span></label>
+      </div>
+      <div class="cards" id="anyCards">
+        <div class="mini">
+          <h3><span data-i18n="anyInline">Inline text</span><code>&lt;span&gt;</code></h3>
+          <div class="stage"><p><span data-i18n="anyInlineA">You have</span> <span id="anyInline"></span> <span data-i18n="anyInlineB">new messages</span></p></div>
+          <div class="snippet">rollingNumber(span, { value, max: 99, overflowSuffix: '+' })</div>
+        </div>
+        <div class="mini">
+          <h3><span data-i18n="anyButton">Button badge</span><code>&lt;button&gt;</code></h3>
+          <div class="stage"><button type="button" class="cart"><span data-i18n="anyCart">Cart</span> <span class="count" id="anyCart"></span></button></div>
+          <div class="snippet">rollingNumber(badge, { value: 3 })</div>
+        </div>
+        <div class="mini">
+          <h3><span data-i18n="anyTable">Table cell</span><code>&lt;td&gt;</code></h3>
+          <div class="stage">
+            <table><tbody>
+              <tr><td data-i18n="anyRevenue">Revenue</td><td class="num" id="anyRevenue"></td></tr>
+              <tr><td data-i18n="anyGrowth">Growth</td><td class="num" id="anyGrowth"></td></tr>
+            </tbody></table>
+          </div>
+          <div class="snippet">{ locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }</div>
+        </div>
+        <div class="mini">
+          <h3><span data-i18n="anyInput">Input</span><code>&lt;input readonly&gt;</code></h3>
+          <div class="stage"><input type="text" readonly id="anyInput" aria-label="Distance" /></div>
+          <div class="snippet">{ locale: 'en-US', format: { style: 'unit', unit: 'kilometer' } }</div>
+        </div>
+        <div class="mini">
+          <h3><span data-i18n="anyTextarea">Textarea</span><code>&lt;textarea&gt;</code></h3>
+          <div class="stage"><textarea readonly rows="2" id="anyTextarea" aria-label="Total"></textarea></div>
+          <div class="snippet">{ prefixText: 'Total: ', suffixText: ' items' }</div>
+        </div>
+        <div class="mini">
+          <h3><span data-i18n="anyOption">Select option</span><code>&lt;option&gt;</code></h3>
+          <div class="stage"><select aria-label="Seats"><option id="anyOption"></option></select></div>
+          <div class="snippet">{ prefixText: 'Seats left: ' }</div>
+        </div>
+        <div class="mini">
+          <h3><span data-i18n="anySvg">SVG text</span><code>&lt;text&gt;</code></h3>
+          <div class="stage">
+            <svg viewBox="0 0 200 90" role="img" aria-label="Temperature gauge">
+              <rect x="1" y="1" width="198" height="88" rx="14" fill="rgba(139,92,246,0.12)" stroke="rgba(168,85,247,0.4)" />
+              <text id="anySvg" x="100" y="58" text-anchor="middle" fill="#f3f1f8" font-family="JetBrains Mono, monospace" font-size="32" font-weight="700"></text>
+            </svg>
+          </div>
+          <div class="snippet">{ format: { style: 'unit', unit: 'celsius' }, decimals: 1 }</div>
+        </div>
       </div>
 
-      <div class="controls">
-        <button id="btnInc">+ 100</button>
-        <button id="btnDec">- 100</button>
-        <button id="btnRand">Random 🎲</button>
-        <button id="btnNeg">Negative ➖</button>
-        <button id="btnReset">Reset 0</button>
+      <h3 style="margin-top:2rem; font-size:1.05rem" data-i18n="statsTitle">Animate when visible</h3>
+      <p class="card-intro" style="margin:0.3rem 0 0" data-i18n="statsIntro">With from: 0 and trigger: 'visible' these numbers count up only when you scroll them into view.</p>
+      <div class="stats">
+        <div class="stat"><div class="n" id="statDownloads"></div><div class="l" data-i18n="statDownloads">weekly downloads</div></div>
+        <div class="stat"><div class="n" id="statUptime"></div><div class="l" data-i18n="statUptime">uptime</div></div>
+        <div class="stat"><div class="n" id="statRating"></div><div class="l" data-i18n="statRating">average rating</div></div>
       </div>
+    </section>
 
-      <div class="options-grid">
-        <div class="option-item">
-          <label for="padInput" id="tLabelPad">Min Digits (Pad):</label>
-          <input type="number" id="padInput" value="4" min="1" max="10" />
+    <!-- ── 3. Styling ─────────────────────────────────────── -->
+    <section class="card" id="styling">
+      <div class="card-title"><span data-i18n="styTitle">Styling with CSS variables</span><span class="badge">--rn-*</span></div>
+      <p class="card-intro" data-i18n="styIntro">The counter inherits your font, size and color. These custom properties tune the animation and the look; set them on the counter or on any ancestor.</p>
+      <div class="styling">
+        <div class="style-preview">
+          <rolling-number id="styleCounter" value="2048"></rolling-number>
+          <button type="button" class="primary" id="btnStyleAnimate" data-i18n="btnAnimate">Animate</button>
         </div>
-        <div class="option-item">
-          <label for="maxInput" id="tLabelMax">Max Limit (Clamp):</label>
-          <input type="number" id="maxInput" placeholder="None (e.g. 9999)" />
-        </div>
-        <div class="option-item">
-          <label for="interpolateInput" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-            <input type="checkbox" id="interpolateInput" checked style="width: auto;" /> <span id="tLabelInterpolate">Smooth Interpolation (rAF)</span>
-          </label>
-        </div>
-        <div class="option-item">
-          <label for="durationInput" id="tLabelDuration">Animation Duration (ms):</label>
-          <input type="number" id="durationInput" value="400" min="50" max="2000" step="50" />
+        <div>
+          <div class="style-controls">
+            <label class="field"><span>--rn-duration: <b id="durOut">500ms</b></span><input type="range" id="styDuration" min="150" max="2000" step="50" value="500" /></label>
+            <label class="field"><span>--rn-lh: <b id="lhOut">1</b></span><input type="range" id="styLh" min="1" max="1.6" step="0.05" value="1" /></label>
+            <label class="field"><span>--rn-easing</span>
+              <select id="styEasing">
+                <option value="" data-i18n="easingDefault">default (odometer)</option>
+                <option>ease-in-out</option>
+                <option>linear</option>
+                <option value="cubic-bezier(0.34, 1.56, 0.64, 1)">back-out (overshoot)</option>
+              </select>
+            </label>
+            <label class="field"><span>font-family</span>
+              <select id="styFont">
+                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                <option value="'Outfit', sans-serif">Outfit</option>
+                <option value="Georgia, serif">Georgia</option>
+              </select>
+            </label>
+            <label class="field"><span>--rn-decoration</span>
+              <select id="styDecoration"><option value="">none</option><option>underline</option><option>line-through</option></select>
+            </label>
+            <div class="field">
+              <span data-i18n="styEffects">Effects</span>
+              <label class="check"><input type="checkbox" id="styGradient" /> <span>--rn-fill (gradient)</span></label>
+              <label class="check"><input type="checkbox" id="styGlow" /> <span>--rn-bleed (glow)</span></label>
+            </div>
+          </div>
+          <div class="code-panel"><pre class="code" id="cssOut"></pre></div>
         </div>
       </div>
     </section>
 
-    <!-- Nx Stress Test -->
-    <section class="card">
-      <div class="card-title">
-        <span id="tStressTitle">⚡ Nx Performance Test (100 Simultaneous Counters)</span>
-        <span class="badge">60 FPS Hardware Accelerated</span>
+    <!-- ── 4. Frameworks ──────────────────────────────────── -->
+    <section class="card" id="frameworks">
+      <div class="card-title"><span data-i18n="fwTitle">Use it in your framework</span><span class="badge">React · Vue · Angular · Svelte · Web Component</span></div>
+      <p class="card-intro" data-i18n="fwIntro">Every integration takes the same options and fires the same rn-start / rn-end events. Pick yours:</p>
+      <div class="code-panel" id="fwPanel">
+        <div class="tabs" role="tablist" aria-label="Framework">
+          <button type="button" role="tab" data-fw="wc" aria-selected="true">Web Component</button>
+          <button type="button" role="tab" data-fw="js" aria-selected="false">Vanilla JS</button>
+          <button type="button" role="tab" data-fw="react" aria-selected="false">React / Next.js</button>
+          <button type="button" role="tab" data-fw="vue" aria-selected="false">Vue / Nuxt</button>
+          <button type="button" role="tab" data-fw="angular" aria-selected="false">Angular</button>
+          <button type="button" role="tab" data-fw="svelte" aria-selected="false">Svelte / others</button>
+          <button type="button" role="tab" data-fw="cdn" aria-selected="false">CDN</button>
+        </div>
+        <pre class="code" id="fwOut"></pre>
+        <div class="code-note" id="fwNote"></div>
       </div>
-
-      <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;" id="tStressDesc">
-        Click the button to update 100 <code>&lt;rolling-number&gt;</code> elements simultaneously and verify 60 FPS smoothness.
-      </p>
-
-      <div style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center;">
-        <button id="btnStressRandomize" style="background: var(--accent-gradient);">Randomize All 100 Numbers 🚀</button>
-        <button id="btnStressAuto">Auto Loop (Start)</button>
-      </div>
-
-      <div class="stress-grid" id="stressContainer">
-        <!-- 100 elements generated via JS -->
+      <div class="live-islands">
+        <div class="island" id="reactIsland"></div>
+        <div class="island" id="vueIsland"></div>
       </div>
     </section>
 
+    <!-- ── 5. Performance ─────────────────────────────────── -->
+    <section class="card" id="performance">
+      <div class="card-title"><span data-i18n="perfTitle">100 counters at once</span><span class="badge" data-i18n="perfBadge">one shared animation frame</span></div>
+      <p class="card-intro" data-i18n="perfIntro">All counters on a page share a single requestAnimationFrame loop that batches reads and writes.</p>
+      <div class="toolbar">
+        <button type="button" class="primary" id="btnStressRandomize" data-i18n="btnStressRandomize">Randomize all 100</button>
+        <button type="button" id="btnStressAuto" data-i18n="btnStressAutoStart">Auto loop (start)</button>
+      </div>
+      <div class="stress-grid" id="stressContainer"></div>
+    </section>
+
+    <footer>
+      <p><span data-i18n="footer">Full documentation, options and migration notes in the</span> <a href="https://github.com/ErlonRr/rolling-number-js#readme" target="_blank" rel="noopener noreferrer">README</a>. MIT License.</p>
+    </footer>
   </div>
 
   <script type="module">
-    import { RollingNumberCore, defineRollingNumber } from './src/index';
+    import { rollingNumber } from 'rolling-number';
+    import { createElement, useState } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { RollingNumber as ReactRollingNumber } from 'rolling-number/react';
+    import { createApp, h, ref } from 'vue';
+    import { RollingNumber as VueRollingNumber } from 'rolling-number/vue';
 
-    // Auto-define <rolling-number>
-    defineRollingNumber();
+    const $ = (id) => document.getElementById(id);
 
-    const translations = {
-      en: {
-        subtitle: 'An ultra-fast, zero-dependency rolling number counter library & native Web Component',
-        demoTitle: '🎮 Interactive Demo',
-        btnRand: 'Random 🎲',
-        btnNeg: 'Negative ➖',
-        btnReset: 'Reset 0',
-        labelPad: 'Min Digits (Pad):',
-        labelMax: 'Max Limit (Clamp):',
-        placeholderMax: 'None (e.g. 9999)',
-        labelInterpolate: 'Smooth Interpolation (rAF)',
-        labelDuration: 'Animation Duration (ms):',
-        stressTitle: '⚡ Nx Performance Test (100 Simultaneous Counters)',
-        stressDesc: 'Click the button to update 100 <code>&lt;rolling-number&gt;</code> elements simultaneously and verify 60 FPS smoothness.',
-        btnStressRandomize: 'Randomize All 100 Numbers 🚀',
-        btnStressAutoStart: 'Auto Loop (Start)',
-        btnStressAutoStop: 'Auto Loop (Stop)',
-      },
-      it: {
-        subtitle: 'Animazione a rullo per numeri in Pure JS + Web Component Nativo',
-        demoTitle: '🎮 Demo Interattiva',
-        btnRand: 'Casuale 🎲',
-        btnNeg: 'Negativo ➖',
-        btnReset: 'Reset 0',
-        labelPad: 'Cifre Minime (Pad):',
-        labelMax: 'Limite Massimo (Clamp):',
-        placeholderMax: 'Nessuno (es. 9999)',
-        labelInterpolate: 'Interpolazione Progressiva (rAF)',
-        labelDuration: 'Durata Animazione (ms):',
-        stressTitle: '⚡ Nx Performance Test (100 Numeri Simultanei)',
-        stressDesc: "Clicca sul pulsante per aggiornare simultaneamente 100 elementi <code>&lt;rolling-number&gt;</code> e verificare l'assenza di lag.",
-        btnStressRandomize: 'Aggiorna Tutti i 100 Numeri 🚀',
-        btnStressAutoStart: 'Auto Loop (Avvia)',
-        btnStressAutoStop: 'Auto Loop (Fermare)',
-      }
+    // ── i18n ──────────────────────────────────────────────────
+    const it = {
+      subtitle: 'Un contatore numerico animato in stile contachilometri. Zero dipendenze, una sola API per Web Component, JS puro, React, Vue, Angular e Svelte — e funziona dentro qualsiasi elemento: testo, pulsanti, celle di tabella, input, textarea e SVG.',
+      installNote: 'Gli stili vengono iniettati automaticamente: nessun import CSS.',
+      navPlayground: 'Playground', navAnywhere: 'Ogni elemento', navStyling: 'Stile', navFrameworks: 'Framework', navPerformance: 'Prestazioni',
+      pgTitle: 'Playground',
+      pgIntro: 'Cambia un’impostazione e il contatore si aggiorna subito. Il codice qui sotto è generato dalle tue impostazioni, pronto da copiare per il framework che usi.',
+      btnRandom: 'Casuale', btnNegative: 'Negativo', btnSet: 'Imposta', logTitle: 'Eventi (rn-start / rn-end)',
+      grpBasics: 'Base', optMotion: 'Movimento', motionCount: 'Conta i valori', motionRoll: 'Ruota ogni cifra',
+      hintPad: 'Cifre minime (zeri iniziali)', hintDuration: 'Vuoto = automatico', hintMax: 'Limite mostrato, es. 99', hintOverflow: 'Mostrato oltre max: “99+”',
+      easingAuto: 'auto',
+      grpFormat: 'Formato', localeNone: 'nessuno (cifre semplici)', styleNumber: 'numero', hintDecimals: 'Cifre decimali fisse',
+      hintPercent: 'La percentuale moltiplica per 100: il valore 0.25 mostra 25%.',
+      grpA11y: 'Accessibilità', optLive: 'Annuncia i valori agli screen reader (live: \'polite\')', hintLabel: 'Nome accessibile; {value} è sostituito dal valore formattato',
+      btnCopy: 'Copia', copied: 'Copiato!',
+      anyTitle: 'Funziona in ogni elemento',
+      anyIntro: 'Lo stesso contatore si aggancia all’elemento che hai già. I contenitori ricevono le colonne di cifre animate; campi di form, <option> e testo SVG vengono animati come testo, così il valore resta un valore normale (consigliati campi read-only o non controllati).',
+      btnNewValues: 'Nuovi valori', autoplay: 'Riproduzione automatica',
+      anyInline: 'Testo in linea', anyInlineA: 'Hai', anyInlineB: 'nuovi messaggi', anyButton: 'Badge in un pulsante', anyCart: 'Carrello',
+      anyTable: 'Cella di tabella', anyRevenue: 'Ricavi', anyGrowth: 'Crescita', anyInput: 'Input', anyTextarea: 'Textarea', anyOption: 'Opzione di select', anySvg: 'Testo SVG',
+      statsTitle: 'Anima quando è visibile', statsIntro: 'Con from: 0 e trigger: \'visible\' questi numeri contano solo quando li fai scorrere nella vista.',
+      statDownloads: 'download settimanali', statUptime: 'disponibilità', statRating: 'valutazione media',
+      styTitle: 'Stile con le variabili CSS', styIntro: 'Il contatore eredita il tuo font, la dimensione e il colore. Queste proprietà personalizzate regolano animazione e aspetto; impostale sul contatore o su un antenato.',
+      btnAnimate: 'Anima', easingDefault: 'predefinito (odometer)', styEffects: 'Effetti',
+      fwTitle: 'Usalo nel tuo framework', fwIntro: 'Ogni integrazione accetta le stesse opzioni ed emette gli stessi eventi rn-start / rn-end. Scegli il tuo:',
+      perfTitle: '100 contatori insieme', perfBadge: 'un solo animation frame condiviso', perfIntro: 'Tutti i contatori della pagina condividono un unico ciclo requestAnimationFrame che raggruppa letture e scritture.',
+      btnStressRandomize: 'Casuali tutti e 100', btnStressAutoStart: 'Loop automatico (avvia)', btnStressAutoStop: 'Loop automatico (ferma)',
+      footer: 'Documentazione completa, opzioni e note di migrazione nel'
+    };
+    const en = {};
+    for (const el of document.querySelectorAll('[data-i18n]')) en[el.dataset.i18n] = el.textContent;
+    Object.assign(en, { copied: 'Copied!', btnStressAutoStop: 'Auto loop (stop)' });
+    let lang = 'en';
+    const t = (key) => (lang === 'it' ? it : en)[key] ?? en[key] ?? key;
+    function setLanguage(next) {
+      lang = next;
+      document.documentElement.lang = next;
+      for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+      $('btnLangEN').classList.toggle('active', next === 'en');
+      $('btnLangIT').classList.toggle('active', next === 'it');
+      $('btnStressAuto').textContent = t(stressTimer ? 'btnStressAutoStop' : 'btnStressAutoStart');
+      renderFramework();
+      renderCode();
+    }
+    $('btnLangEN').addEventListener('click', () => setLanguage('en'));
+    $('btnLangIT').addEventListener('click', () => setLanguage('it'));
+
+    // ── 1. Playground ─────────────────────────────────────────
+    const hero = $('heroCounter');
+    const state = {
+      value: 1234, pad: 4, interpolate: true, duration: null, max: null, overflowSuffix: '', easing: '',
+      locale: '', style: '', currency: 'EUR', unit: 'kilometer-per-hour', decimals: null, prefixText: '', suffixText: '',
+      live: false, label: ''
     };
 
-    let currentLang = 'en';
+    const numOrNull = (s) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s));
 
-    function setLanguage(lang) {
-      currentLang = lang;
-      const t = translations[lang];
+    function formatOption() {
+      if (state.style === 'currency') return { style: 'currency', currency: state.currency };
+      if (state.style === 'percent') return { style: 'percent' };
+      if (state.style === 'unit') return { style: 'unit', unit: state.unit };
+      return null;
+    }
 
-      document.getElementById('tSubtitle').innerHTML = t.subtitle;
-      document.getElementById('tDemoTitle').innerHTML = t.demoTitle;
-      document.getElementById('btnRand').textContent = t.btnRand;
-      document.getElementById('btnNeg').textContent = t.btnNeg;
-      document.getElementById('btnReset').textContent = t.btnReset;
-      document.getElementById('tLabelPad').textContent = t.labelPad;
-      document.getElementById('tLabelMax').textContent = t.labelMax;
-      document.getElementById('maxInput').placeholder = t.placeholderMax;
-      document.getElementById('tLabelInterpolate').textContent = t.labelInterpolate;
-      document.getElementById('tLabelDuration').textContent = t.labelDuration;
-      document.getElementById('tStressTitle').innerHTML = t.stressTitle;
-      document.getElementById('tStressDesc').innerHTML = t.stressDesc;
-      document.getElementById('btnStressRandomize').textContent = t.btnStressRandomize;
+    /** Options that differ from the defaults, in a stable order (drives the element and the code). */
+    function options() {
+      const o = {};
+      o.value = state.value;
+      if (state.pad !== 1) o.pad = state.pad;
+      if (state.max !== null) o.max = state.max;
+      if (state.max !== null && state.overflowSuffix) o.overflowSuffix = state.overflowSuffix;
+      if (!state.interpolate) o.interpolate = false;
+      if (state.duration !== null) o.duration = state.duration;
+      if (state.easing) o.easing = state.easing;
+      if (state.locale) o.locale = state.locale;
+      const format = formatOption();
+      if (format) o.format = format;
+      if (state.decimals !== null) o.decimals = state.decimals;
+      if (state.prefixText) o.prefixText = state.prefixText;
+      if (state.suffixText) o.suffixText = state.suffixText;
+      if (state.label) o.label = state.label;
+      if (state.live) o.live = 'polite';
+      return o;
+    }
 
-      if (!autoTimer) {
-        btnStressAuto.textContent = t.btnStressAutoStart;
-      } else {
-        btnStressAuto.textContent = t.btnStressAutoStop;
+    /** Applies every setting except `value` to the element (properties reflect to attributes). */
+    function applyOptions() {
+      hero.pad = state.pad;
+      hero.max = state.max;
+      hero.overflowSuffix = state.max !== null ? state.overflowSuffix : '';
+      hero.interpolate = state.interpolate;
+      hero.duration = state.duration;
+      hero.easing = state.easing || null;
+      hero.locale = state.locale || null;
+      hero.format = formatOption();
+      hero.decimals = state.decimals;
+      hero.prefixText = state.prefixText;
+      hero.suffixText = state.suffixText;
+      hero.label = state.label || null;
+      hero.live = state.live ? 'polite' : 'off';
+      $('optCurrency').disabled = state.style !== 'currency';
+      $('optUnit').disabled = state.style !== 'unit';
+      $('optOverflow').disabled = state.max === null;
+      $('percentHint').hidden = state.style !== 'percent';
+      renderCode();
+    }
+
+    function setValue(v) {
+      state.value = Math.round(v * 1e6) / 1e6;
+      $('valueInput').value = String(state.value);
+      const started = performance.now();
+      hero.setValue(state.value).then(({ completed }) => {
+        $('logPromise').textContent = completed
+          ? `setValue() → resolved in ${Math.round(performance.now() - started)} ms`
+          : 'setValue() → superseded';
+      });
+      renderCode();
+    }
+
+    for (const btn of document.querySelectorAll('[data-step]')) {
+      btn.addEventListener('click', () => setValue(state.value + Number(btn.dataset.step)));
+    }
+    $('btnRand').addEventListener('click', () => setValue(state.style === 'percent' ? Math.random() : Math.floor(Math.random() * 99999)));
+    $('btnNeg').addEventListener('click', () => setValue(-Math.abs(state.value || 1234)));
+    $('btnZero').addEventListener('click', () => setValue(0));
+    $('valueForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = numOrNull($('valueInput').value);
+      if (v !== null) setValue(v);
+    });
+
+    for (const btn of document.querySelectorAll('[data-motion]')) {
+      btn.addEventListener('click', () => {
+        state.interpolate = btn.dataset.motion === 'count';
+        for (const b of document.querySelectorAll('[data-motion]')) b.setAttribute('aria-pressed', String(b === btn));
+        applyOptions();
+      });
+    }
+    const bind = (id, key, read) => $(id).addEventListener('input', (e) => { state[key] = read(e.target); applyOptions(); });
+    bind('optPad', 'pad', (el) => Math.max(1, Math.min(12, Number(el.value) || 1)));
+    bind('optDuration', 'duration', (el) => numOrNull(el.value));
+    bind('optMax', 'max', (el) => numOrNull(el.value));
+    bind('optOverflow', 'overflowSuffix', (el) => el.value);
+    bind('optEasing', 'easing', (el) => el.value);
+    bind('optLocale', 'locale', (el) => el.value);
+    bind('optStyle', 'style', (el) => el.value);
+    bind('optCurrency', 'currency', (el) => el.value);
+    bind('optUnit', 'unit', (el) => el.value);
+    bind('optDecimals', 'decimals', (el) => numOrNull(el.value));
+    bind('optPrefix', 'prefixText', (el) => el.value);
+    bind('optSuffix', 'suffixText', (el) => el.value);
+    bind('optLabel', 'label', (el) => el.value);
+    $('optLive').addEventListener('change', (e) => { state.live = e.target.checked; applyOptions(); });
+
+    // Event log
+    const logLines = [];
+    const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+    for (const type of ['rn-start', 'rn-end']) {
+      hero.addEventListener(type, (e) => {
+        const { value, from, animated } = e.detail;
+        logLines.unshift(`<span class="${type === 'rn-end' ? 'end' : ''}"><b>${type}</b>  value ${fmt(value)}  from ${fmt(from)}  ${animated ? 'animated' : 'instant'}</span>`);
+        logLines.length = Math.min(logLines.length, 6);
+        $('eventLog').innerHTML = logLines.join('<br>');
+      });
+    }
+
+    // ── Code generation ──
+    const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+    function lit(v) {
+      if (v === null) return 'null';
+      if (typeof v === 'string') return q(v);
+      if (typeof v === 'object') return `{ ${Object.entries(v).map(([k, x]) => `${k}: ${lit(x)}`).join(', ')} }`;
+      return String(v);
+    }
+    const kebab = (k) => k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+    const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const ANGULAR_LEGACY = new Set(['pad', 'max', 'interpolate', 'duration']);
+
+    const CODE = {
+      html(o) {
+        const attrs = Object.entries(o).map(([k, v]) => {
+          if (k === 'format') return `format='${JSON.stringify(v)}'`;
+          return `${kebab(k)}="${escAttr(v)}"`;
+        });
+        return `<script type="module">\n  import 'rolling-number';\n<\/script>\n\n<rolling-number\n  ${attrs.join('\n  ')}\n></rolling-number>\n\n<script type="module">\n  const counter = document.querySelector('rolling-number');\n  counter.value = 5678;                      // or: await counter.setValue(5678)\n  counter.addEventListener('rn-end', (e) => console.log(e.detail.value));\n<\/script>`;
+      },
+      js(o) {
+        const { value, ...rest } = o;
+        const body = [`value: ${lit(value)}`, ...Object.entries(rest).map(([k, v]) => `${k}: ${lit(v)}`)];
+        return `import { RollingNumberCore } from 'rolling-number';\n\nconst el = document.querySelector('#counter');\nconst counter = new RollingNumberCore(el, {\n  ${body.join(',\n  ')}\n});\n\nawait counter.setValue(5678);                // resolves when the animation ends\nel.addEventListener('rn-end', (e) => console.log(e.detail.value));\ncounter.update({ max: 99 });                 // change options later\ncounter.destroy();                           // restores the element`;
+      },
+      react(o) {
+        const props = Object.entries(o).map(([k, v]) => {
+          if (k === 'value') return 'value={count}';
+          if (typeof v === 'string') return `${k}=${JSON.stringify(v)}`;
+          if (typeof v === 'object') return `${k}={${lit(v)}}`;
+          return `${k}={${v}}`;
+        });
+        return `import { useState } from 'react';\nimport { RollingNumber } from 'rolling-number/react';\n\nexport function Counter() {\n  const [count, setCount] = useState(${lit(o.value)});\n  return (\n    <RollingNumber\n      ${props.join('\n      ')}\n      onRnEnd={(e) => console.log(e.detail.value)}\n      onClick={() => setCount((c) => c + 1)}\n    />\n  );\n}`;
+      },
+      vue(o) {
+        const props = Object.entries(o).map(([k, v]) => {
+          if (k === 'value') return ':value="count"';
+          if (typeof v === 'string') return `${kebab(k)}="${escAttr(v)}"`;
+          return `:${kebab(k)}="${escAttr(lit(v))}"`;
+        });
+        return `<script setup>\nimport { ref } from 'vue';\nimport { RollingNumber } from 'rolling-number/vue';\n\nconst count = ref(${lit(o.value)});\n<\/script>\n\n<template>\n  <RollingNumber\n    ${props.join('\n    ')}\n    @rn-end="(e) => console.log(e.detail.value)"\n    @click="count++"\n  />\n</template>`;
+      },
+      angular(o) {
+        const inputs = Object.entries(o).map(([k, v]) => {
+          if (k === 'value') return '[rollingNumber]="count"';
+          const name = ANGULAR_LEGACY.has(k) ? k : 'rn' + k[0].toUpperCase() + k.slice(1);
+          if (typeof v === 'string') return `${name}="${escAttr(v)}"`;
+          return `[${name}]="${escAttr(lit(v))}"`;
+        });
+        return `import { Component } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-counter',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`\n    <span\n      ${inputs.join('\n      ')}\n      (rnEnd)="onEnd($event.detail.value)"\n      (click)="count = count + 1"\n    ></span>\n  \`\n})\nexport class CounterComponent {\n  count = ${lit(o.value)};\n  onEnd(value: number) { console.log(value); }\n}`;
+      },
+      svelte(o) {
+        const { value, ...rest } = o;
+        const body = ['value: count', ...Object.entries(rest).map(([k, v]) => `${k}: ${lit(v)}`)];
+        return `<script>\n  import { rollingNumber } from 'rolling-number/action';\n  let count = ${lit(value)};\n<\/script>\n\n<span use:rollingNumber={{ ${body.join(', ')} }}\n      on:click={() => count++}></span>`;
       }
+    };
+    const NOTES = {
+      en: {
+        html: 'Attributes are kebab-case; format is JSON. Every attribute is also a typed property.',
+        js: 'The core attaches to any element you pass: span, div, button, input, textarea, SVG text…',
+        react: 'Works in Next.js (client component). staticFallback renders the number on the server too.',
+        vue: 'Also available as a directive: <span v-rolling-number="{ value: count, pad: 4 }"></span>.',
+        angular: 'Use #c="rollingNumber" to call c.setValue() from the template. rnTarget attaches to an inner <input>.',
+        svelte: 'The action works with Svelte, Solid, Lit and Alpine (update() takes the full option set).'
+      },
+      it: {
+        html: 'Gli attributi sono in kebab-case; format è JSON. Ogni attributo è anche una proprietà tipizzata.',
+        js: 'Il core si aggancia a qualsiasi elemento: span, div, button, input, textarea, testo SVG…',
+        react: 'Funziona in Next.js (client component). staticFallback mostra il numero anche dal server.',
+        vue: 'Disponibile anche come direttiva: <span v-rolling-number="{ value: count, pad: 4 }"></span>.',
+        angular: 'Con #c="rollingNumber" chiami c.setValue() dal template. rnTarget si aggancia a un <input> interno.',
+        svelte: 'L’azione funziona con Svelte, Solid, Lit e Alpine (update() riceve tutte le opzioni).'
+      }
+    };
+    let tab = 'html';
+    function renderCode() {
+      $('codeOut').textContent = CODE[tab](options());
+      $('codeNote').textContent = NOTES[lang][tab];
+    }
+    function selectTabs(container, attr, current) {
+      for (const b of container.querySelectorAll(`[${attr}]`)) b.setAttribute('aria-selected', String(b.getAttribute(attr) === current));
+    }
+    for (const b of document.querySelectorAll('#codePanel [data-tab]')) {
+      b.addEventListener('click', () => { tab = b.dataset.tab; selectTabs($('codePanel'), 'data-tab', tab); renderCode(); });
+    }
+    $('btnCopy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText($('codeOut').textContent);
+        $('btnCopy').textContent = t('copied');
+        setTimeout(() => ($('btnCopy').textContent = t('btnCopy')), 1200);
+      } catch { /* clipboard unavailable (http) */ }
+    });
 
-      document.getElementById('btnLangEN').classList.toggle('active', lang === 'en');
-      document.getElementById('btnLangIT').classList.toggle('active', lang === 'it');
+    // ── 2. Any element ────────────────────────────────────────
+    const rand = (min, max) => Math.round(min + Math.random() * (max - min));
+    const anywhere = [
+      { el: $('anyInline'), opts: { max: 99, overflowSuffix: '+' }, next: () => rand(0, 140) },
+      { el: $('anyCart'), opts: {}, next: () => rand(0, 12) },
+      { el: $('anyRevenue'), opts: { locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }, next: () => rand(1000, 250000) + rand(0, 99) / 100 },
+      { el: $('anyGrowth'), opts: { locale: 'it-IT', format: { style: 'percent', signDisplay: 'always' }, decimals: 1 }, next: () => rand(-150, 450) / 1000 },
+      { el: $('anyInput'), opts: { locale: 'en-US', format: { style: 'unit', unit: 'kilometer' } }, next: () => rand(0, 40000) },
+      { el: $('anyTextarea'), opts: { prefixText: 'Total: ', suffixText: ' items' }, next: () => rand(0, 5000) },
+      { el: $('anyOption'), opts: { prefixText: 'Seats left: ' }, next: () => rand(0, 300) },
+      { el: $('anySvg'), opts: { locale: 'en-US', format: { style: 'unit', unit: 'celsius' }, decimals: 1 }, next: () => rand(-200, 400) / 10 }
+    ].map((item) => ({ ...item, action: rollingNumber(item.el, { ...item.opts, value: item.next() }) }));
+
+    function newValues() {
+      for (const item of anywhere) item.action.core?.setValue(item.next());
+    }
+    $('btnAnyNew').addEventListener('click', newValues);
+    let anyTimer = null;
+    $('anyAuto').addEventListener('change', (e) => {
+      clearInterval(anyTimer);
+      anyTimer = e.target.checked ? setInterval(newValues, 1600) : null;
+    });
+
+    rollingNumber($('statDownloads'), { value: 12480, from: 0, trigger: 'visible', duration: 1600, locale: 'en-US' });
+    rollingNumber($('statUptime'), { value: 0.999, from: 0, trigger: 'visible', duration: 1600, locale: 'en-US', format: { style: 'percent' }, decimals: 1 });
+    rollingNumber($('statRating'), { value: 4.8, from: 0, trigger: 'visible', duration: 1600, decimals: 1, suffixText: ' ★' });
+
+    // ── 3. Styling ────────────────────────────────────────────
+    const styleCounter = $('styleCounter');
+    function applyStyle() {
+      const s = styleCounter.style;
+      const duration = Number($('styDuration').value);
+      const lh = Number($('styLh').value);
+      const glow = $('styGlow').checked;
+      const gradient = $('styGradient').checked;
+      const rules = [];
+      const set = (prop, value) => {
+        if (value === null) s.removeProperty(prop);
+        else { s.setProperty(prop, value); rules.push(`${prop}: ${value};`); }
+      };
+      $('durOut').textContent = duration + 'ms';
+      $('lhOut').textContent = String(lh);
+      set('--rn-duration', duration === 500 ? null : duration + 'ms');
+      set('--rn-easing', $('styEasing').value || null);
+      set('--rn-lh', glow ? String(Math.max(lh, 1.4)) : lh === 1 ? null : String(lh));
+      set('font-family', $('styFont').value);
+      set('--rn-decoration', $('styDecoration').value || null);
+      set('--rn-fill', gradient ? 'linear-gradient(180deg, #f0abfc, #818cf8)' : null);
+      if (gradient) rules.push('color: transparent;');
+      set('--rn-bleed', glow ? '14px' : null);
+      if (glow) rules.push('text-shadow: 0 0 18px #c084fc, 0 0 42px #8b5cf6;');
+      styleCounter.classList.toggle('gradient', gradient);
+      styleCounter.classList.toggle('glow', glow);
+      $('cssOut').textContent = `.my-counter {\n  ${rules.join('\n  ')}\n}`;
+    }
+    for (const id of ['styDuration', 'styLh', 'styEasing', 'styFont', 'styDecoration', 'styGradient', 'styGlow']) {
+      $(id).addEventListener('input', applyStyle);
+    }
+    // Without a JS duration, the CSS variables time both rolls and counts.
+    $('btnStyleAnimate').addEventListener('click', () => styleCounter.setValue(rand(0, 9999)));
+    applyStyle();
+
+    // ── 4. Frameworks ─────────────────────────────────────────
+    const FW = {
+      wc: `npm i rolling-number\n\n<!-- registers <rolling-number> -->\n<script type="module">import 'rolling-number';<\/script>\n\n<rolling-number value="1234" pad="4"></rolling-number>\n<rolling-number value="99" max="99" overflow-suffix="+"></rolling-number>\n<rolling-number value="1234.5" locale="de-DE"\n  format='{"style":"currency","currency":"EUR"}'></rolling-number>\n\n<script type="module">\n  const el = document.querySelector('rolling-number');\n  el.value = 4321;                       // animates\n  await el.setValue(5000, { duration: 1200 });\n  el.addEventListener('rn-end', (e) => console.log(e.detail.value));\n<\/script>`,
+      js: `npm i rolling-number\n\nimport { RollingNumberCore, rollingNumber } from 'rolling-number/action'; // no custom element registration\n\n// Attach to any element: span, td, button, input, textarea, svg <text>…\nconst counter = new RollingNumberCore(document.querySelector('#total'), {\n  value: 0,\n  locale: 'en-US',\n  format: { style: 'currency', currency: 'USD' }\n});\n\nconst { completed } = await counter.setValue(1999.99);\ncounter.setValue(10, false);              // roll each digit instead of counting\ncounter.setValue(25, { motion: 'none' }); // instant\ncounter.destroy();`,
+      react: `npm i rolling-number\n\n'use client'; // Next.js App Router\nimport { useRef, useState } from 'react';\nimport { RollingNumber, useRollingNumber } from 'rolling-number/react';\n\nexport function Price({ amount }: { amount: number }) {\n  return (\n    <RollingNumber\n      value={amount}\n      locale="en-US"\n      format={{ style: 'currency', currency: 'USD' }}\n      staticFallback          // server-rendered text, hydrated without warnings\n      onRnEnd={(e) => console.log(e.detail.value)}\n      className="price"\n    />\n  );\n}\n\n// Or on your own element:\nfunction Badge({ count }: { count: number }) {\n  const ref = useRef<HTMLSpanElement>(null);\n  useRollingNumber(ref, { value: count, max: 99, overflowSuffix: '+' });\n  return <span ref={ref} className="badge" />;\n}`,
+      vue: `npm i rolling-number\n\n<script setup lang="ts">\nimport { ref } from 'vue';\nimport { RollingNumber, vRollingNumber } from 'rolling-number/vue';\n\nconst score = ref(1200);\n<\/script>\n\n<template>\n  <!-- component -->\n  <RollingNumber :value="score" :pad="4" @rn-end="(e) => console.log(e.detail.value)" />\n\n  <!-- directive on any element -->\n  <td v-rolling-number="{ value: score, locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }"></td>\n</template>`,
+      angular: `npm i rolling-number\n\nimport { Component } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-stats',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`\n    <span [rollingNumber]="visitors" [pad]="4"></span>\n\n    <span [rollingNumber]="price" rnLocale="it-IT"\n          [rnFormat]="{ style: 'currency', currency: 'EUR' }"\n          (rnEnd)="done($event.detail.value)" #c="rollingNumber"></span>\n    <button (click)="c.setValue(0)">Reset</button>\n\n    <!-- PrimeNG / Material inputs: attach to the inner <input> -->\n    <p-inputNumber [rollingNumber]="qty" rnTarget="input" />\n  \`\n})\nexport class StatsComponent {\n  visitors = 1200;\n  price = 49.9;\n  qty = 3;\n  done(value: number) { console.log(value); }\n}`,
+      svelte: `npm i rolling-number\n\n<!-- Svelte -->\n<script>\n  import { rollingNumber } from 'rolling-number/action';\n  let count = 0;\n<\/script>\n<span use:rollingNumber={{ value: count, pad: 3 }}></span>\n\n// Solid\n<span ref={(el) => rollingNumber(el, { value: count() })} />\n\n// Alpine\n<span x-data="{ n: 5 }" x-init="const c = rollingNumber($el, n); $watch('n', (v) => c.update(v))"></span>`,
+      cdn: `<!-- one script tag, global RollingNumber, styles injected -->\n<script src="https://unpkg.com/rolling-number"><\/script>\n\n<rolling-number value="42"></rolling-number>\n\n<script>\n  RollingNumber.rollingNumber(document.querySelector('#n'), { value: 7 });\n<\/script>\n\n<!-- strict CSP: pass a nonce, or opt out and link the stylesheet -->\n<script src="https://unpkg.com/rolling-number" nonce="…"><\/script>\n<script src="https://unpkg.com/rolling-number" data-rn-inject="false"><\/script>\n<link rel="stylesheet" href="https://unpkg.com/rolling-number/dist/style.css">`
+    };
+    const FW_NOTES = {
+      en: {
+        wc: 'Works in plain HTML and in any framework that renders custom elements. Types for JSX and Vue templates: rolling-number/jsx, rolling-number/vue-element.',
+        js: 'rolling-number/action has no side effects; import \'rolling-number\' also registers <rolling-number>.',
+        react: 'React 16.8+ (React 19 and Server Components included: the entry is marked "use client").',
+        vue: 'Vue 3. With SSR the directive renders role and aria-label on the server.',
+        angular: 'Angular 16+, standalone directive, runs outside NgZone. Inputs: rollingNumber, pad, max, interpolate, duration and rn* for the rest.',
+        svelte: 'The action follows Svelte semantics: update() receives the full option set.',
+        cdn: 'The IIFE build exposes RollingNumberCore, rollingNumber, configureRollingNumber, renderStaticText and more on window.RollingNumber.'
+      },
+      it: {
+        wc: 'Funziona in HTML puro e in ogni framework che renderizza custom element. Tipi per JSX e template Vue: rolling-number/jsx, rolling-number/vue-element.',
+        js: 'rolling-number/action non ha effetti collaterali; import \'rolling-number\' registra anche <rolling-number>.',
+        react: 'React 16.8+ (inclusi React 19 e i Server Components: l’entry è marcata "use client").',
+        vue: 'Vue 3. Con SSR la direttiva produce role e aria-label già dal server.',
+        angular: 'Angular 16+, direttiva standalone, gira fuori da NgZone. Input: rollingNumber, pad, max, interpolate, duration e rn* per il resto.',
+        svelte: 'L’azione segue la semantica di Svelte: update() riceve tutte le opzioni.',
+        cdn: 'La build IIFE espone RollingNumberCore, rollingNumber, configureRollingNumber, renderStaticText e altro su window.RollingNumber.'
+      }
+    };
+    let fw = 'wc';
+    function renderFramework() {
+      $('fwOut').textContent = FW[fw];
+      $('fwNote').textContent = FW_NOTES[lang][fw];
+    }
+    for (const b of document.querySelectorAll('#fwPanel [data-fw]')) {
+      b.addEventListener('click', () => { fw = b.dataset.fw; selectTabs($('fwPanel'), 'data-fw', fw); renderFramework(); });
     }
 
-    document.getElementById('btnLangEN').addEventListener('click', () => setLanguage('en'));
-    document.getElementById('btnLangIT').addEventListener('click', () => setLanguage('it'));
-
-    const heroCounter = document.getElementById('heroCounter');
-    const btnInc = document.getElementById('btnInc');
-    const btnDec = document.getElementById('btnDec');
-    const btnRand = document.getElementById('btnRand');
-    const btnNeg = document.getElementById('btnNeg');
-    const btnReset = document.getElementById('btnReset');
-    const padInput = document.getElementById('padInput');
-    const maxInput = document.getElementById('maxInput');
-    const interpolateInput = document.getElementById('interpolateInput');
-    const durationInput = document.getElementById('durationInput');
-
-    let currentValue = 1234;
-
-    function updateHero() {
-      heroCounter.value = currentValue;
+    // Live islands: the real React and Vue components.
+    function ReactIsland() {
+      const [count, setCount] = useState(42);
+      return createElement('div', { style: { display: 'contents' } },
+        createElement('div', null,
+          createElement('div', { className: 'label' }, 'React · <RollingNumber>'),
+          createElement(ReactRollingNumber, { value: count, pad: 3, className: 'big' })),
+        createElement('div', { className: 'btns' },
+          createElement('button', { type: 'button', onClick: () => setCount((c) => c - 7) }, '− 7'),
+          createElement('button', { type: 'button', onClick: () => setCount((c) => c + 7) }, '+ 7')));
     }
+    createRoot($('reactIsland')).render(createElement(ReactIsland));
 
-    btnInc.addEventListener('click', () => { currentValue += 100; updateHero(); });
-    btnDec.addEventListener('click', () => { currentValue -= 100; updateHero(); });
-    btnRand.addEventListener('click', () => { currentValue = Math.floor(Math.random() * 9999); updateHero(); });
-    btnNeg.addEventListener('click', () => { currentValue = -Math.abs(currentValue || 1234); updateHero(); });
-    btnReset.addEventListener('click', () => { currentValue = 0; updateHero(); });
+    createApp({
+      setup() {
+        const count = ref(1999);
+        return () => [
+          h('div', null, [
+            h('div', { class: 'label' }, 'Vue · <RollingNumber>'),
+            h(VueRollingNumber, { value: count.value, locale: 'it-IT', format: { style: 'currency', currency: 'EUR' }, class: 'big' })
+          ]),
+          h('div', { class: 'btns' }, [
+            h('button', { type: 'button', onClick: () => (count.value -= 250) }, '− 250'),
+            h('button', { type: 'button', onClick: () => (count.value += 250) }, '+ 250')
+          ])
+        ];
+      }
+    }).mount('#vueIsland');
 
-    padInput.addEventListener('input', (e) => {
-      heroCounter.pad = Number(e.target.value) || 1;
-    });
-
-    maxInput.addEventListener('input', (e) => {
-      heroCounter.max = e.target.value ? Number(e.target.value) : null;
-    });
-
-    interpolateInput.addEventListener('change', (e) => {
-      heroCounter.interpolate = e.target.checked;
-    });
-
-    durationInput.addEventListener('input', (e) => {
-      heroCounter.duration = Number(e.target.value) || 400;
-    });
-
-    // Populate Nx Stress Test Grid with 100 elements
-    const stressContainer = document.getElementById('stressContainer');
+    // ── 5. Performance ────────────────────────────────────────
     const stressElements = [];
-
     for (let i = 0; i < 100; i++) {
       const cell = document.createElement('div');
       cell.className = 'stress-cell';
@@ -484,35 +886,25 @@
       rn.value = Math.floor(Math.random() * 99);
       rn.pad = 2;
       cell.appendChild(rn);
-      stressContainer.appendChild(cell);
+      $('stressContainer').appendChild(cell);
       stressElements.push(rn);
     }
-
-    document.getElementById('btnStressRandomize').addEventListener('click', () => {
-      stressElements.forEach(el => {
-        el.value = Math.floor(Math.random() * 99);
-      });
-    });
-
-    let autoTimer = null;
-    const btnStressAuto = document.getElementById('btnStressAuto');
-
-    btnStressAuto.addEventListener('click', () => {
-      if (autoTimer) {
-        clearInterval(autoTimer);
-        autoTimer = null;
-        btnStressAuto.textContent = translations[currentLang].btnStressAutoStart;
-        btnStressAuto.style.background = '';
+    const randomizeAll = () => { for (const el of stressElements) el.value = Math.floor(Math.random() * 99); };
+    $('btnStressRandomize').addEventListener('click', randomizeAll);
+    let stressTimer = null;
+    $('btnStressAuto').addEventListener('click', () => {
+      if (stressTimer) {
+        clearInterval(stressTimer);
+        stressTimer = null;
       } else {
-        btnStressAuto.textContent = translations[currentLang].btnStressAutoStop;
-        btnStressAuto.style.background = '#ef4444';
-        autoTimer = setInterval(() => {
-          stressElements.forEach(el => {
-            el.value = Math.floor(Math.random() * 99);
-          });
-        }, 800);
+        randomizeAll();
+        stressTimer = setInterval(randomizeAll, 700);
       }
+      $('btnStressAuto').textContent = t(stressTimer ? 'btnStressAutoStop' : 'btnStressAutoStart');
     });
+
+    applyOptions();
+    renderFramework();
   </script>
 </body>
 </html>
