@@ -255,10 +255,17 @@ export class RollingNumberElement extends HTMLElementBase {
 
   constructor() {
     super();
-    // Assigned here rather than as field initializers, which compile to one helper call each.
-    this.core = this.stash = null;
+    // Assigned here rather than as field initializers, which compile to one helper call each
+    // (`@internal` keeps these private fields out of the Custom Elements Manifest).
+    /** @internal */
+    this.core = null;
+    /** @internal */
+    this.stash = null;
+    /** @internal */
     this.fnSlot = { easing: null, label: null };
+    /** @internal */
     this.fromConsumed = false;
+    /** @internal */
     this.formatCache = { attr: null, value: null };
   }
 
