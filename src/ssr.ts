@@ -15,11 +15,26 @@ import { createBaseFormatter, resolveLabel } from './format';
 const TAG_RE = /^[a-z][a-z0-9-]*$/;
 /** Attribute names accepted in `init.attrs` (no quotes, spaces, `=`, `<`, `>` or `/`). */
 const ATTR_RE = /^[A-Za-z_:][A-Za-z0-9_.:-]*$/;
-/** Elements that cannot hold the fallback child (void or raw-text content). */
-const NO_CHILD_TAGS = new Set([
-  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr',
-  'script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext', 'template'
-]);
+/**
+ * Tags that cannot carry the markup, whatever the mode (§6 table): void and
+ * raw-text elements, form controls (the caller renders their value), hosts
+ * whose content is not rendered or that the HTML parser would move the child
+ * out of (select, media, table structure, head), MathML, and SVG elements
+ * other than `text`/`tspan`/`textPath`/`foreignObject` (plus `fe*` and
+ * `animate*`, below). Lowercase: HTML parsing lowercases SVG names too.
+ */
+const NO_HOST = new Set(
+  ('area base basefont bgsound br col embed frame hr image img input keygen link meta param source track wbr ' +
+    'script style textarea title xmp iframe noembed noframes noscript plaintext template select optgroup ' +
+    'video audio canvas html head frameset table thead tbody tfoot tr colgroup math svg g defs symbol use ' +
+    'switch marker mask pattern clippath lineargradient radialgradient stop filter path rect circle ellipse ' +
+    'line polygon polyline view desc metadata set mpath discard').split(' ')
+);
+
+/** Throws the TypeError of an invalid {@link renderStaticHTML} call. */
+function fail(why: string): never {
+  throw new TypeError(`[RollingNumber] renderStaticHTML: ${why}.`);
+}
 
 /** Escapes text for HTML content and double-quoted attribute values. */
 function escapeHtml(s: string): string {
@@ -28,15 +43,15 @@ function escapeHtml(s: string): string {
   );
 }
 
-/** What a counter shows at rest for `options`: the clamped text and the (unclamped) label. */
-function staticState(options: RollingNumberOptions | undefined): { text: string; label: string } {
+/** What a counter shows at rest for `options`: the clamped text, the (unclamped) label and the mode option. */
+function staticState(options: RollingNumberOptions | undefined): { text: string; label: string; mode: string } {
   const o = resolveOptions(options as RollingNumberUpdate | undefined);
   const fmt = createBaseFormatter(o);
   const A = fmt.quantize(o.value);
   const Amax = fmt.maxA(o.max);
   const overflow = Math.abs(A) > Amax;
   const shown = (A < 0 ? -1 : 1) * Math.min(Math.abs(A), Amax) || 0;
-  return { text: fmt.text(shown, overflow), label: resolveLabel(o, fmt, o.value, overflow) };
+  return { text: fmt.text(shown, overflow), label: resolveLabel(o, fmt, o.value, overflow), mode: o.mode };
 }
 
 /**
@@ -65,25 +80,13 @@ type Attr = [name: string, value: string | null];
 
 /** Attribute text of an option value, or `null` when it cannot be expressed (functions, symbols, …). */
 function optionAttrValue(value: unknown): string | null {
-  switch (typeof value) {
-    case 'string':
-      return value;
-    case 'number':
-    case 'boolean':
-    case 'bigint':
-      return String(value);
-    case 'object': {
-      if (value === null) return null;
-      if (Array.isArray(value)) return value.filter((x): x is string => typeof x === 'string').join(',');
-      try {
-        const json = JSON.stringify(value);
-        return typeof json === 'string' ? json : null;
-      } catch {
-        return null;
-      }
-    }
-    default:
-      return null;
+  if (typeof value !== 'object' || !value) return /^(string|number|boolean|bigint)$/.test(typeof value) ? String(value) : null;
+  if (Array.isArray(value)) return value.filter((x): x is string => typeof x === 'string').join(',');
+  try {
+    const json = JSON.stringify(value);
+    return typeof json === 'string' ? json : null;
+  } catch {
+    return null;
   }
 }
 
@@ -93,9 +96,7 @@ function mergeAttrs(list: Attr[], attrs: Record<string, string> | undefined): vo
   for (const name of Object.keys(attrs)) {
     const raw: unknown = attrs[name];
     if (raw === undefined || raw === null) continue;
-    if (!ATTR_RE.test(name)) {
-      throw new TypeError(`[RollingNumber] renderStaticHTML: invalid attribute name ${JSON.stringify(name)}.`);
-    }
+    if (!ATTR_RE.test(name)) fail(`invalid attribute name ${JSON.stringify(name)}`);
     const value = String(raw);
     const lower = name.toLowerCase();
     const existing = list.find(([n]) => n.toLowerCase() === lower);
@@ -111,8 +112,8 @@ function renderAttrs(list: Attr[]): string {
 
 /**
  * Escaped HTML for template engines (every text and attribute value is
- * escaped). Three shapes:
- * - default: `<span class="rn-ssr" data-rn-ssr>…</span>`, the fallback child
+ * escaped). Columns mode (the default) has three shapes:
+ * - no `tag`: `<span class="rn-ssr" data-rn-ssr>…</span>`, the fallback child
  *   to place inside a host;
  * - `{ tag: 'rolling-number' }`: `<rolling-number …option attributes…>` with
  *   the fallback child; option attributes are named by the element's
@@ -123,21 +124,34 @@ function renderAttrs(list: Attr[]): string {
  *   adopts it: role and label become core-owned, `data-rn-ssr` is removed
  *   from the host and the child is hidden.
  *
+ * Text mode (`mode: 'text'`, or `mode: 'auto'` on `option` and SVG
+ * `text`/`tspan`/`textpath`, as the core resolves it) writes the host's text,
+ * so the element gets the plain text as its content and nothing else (no
+ * class, role, label, `data-rn-ssr` or fallback child; `rolling-number` keeps
+ * its option attributes). Without a `tag` the result is that escaped text,
+ * the content of a text host.
+ *
  * `attrs` are added to the outer element (`class` is merged, other names
- * replace the generated ones). The fallback text is the clamped text of
+ * replace the generated ones). The text is the clamped text of
  * {@link renderStaticText}; `aria-label` is the unclamped label.
  *
  * @param options Counter options.
- * @param init `tag`: host tag (lowercase `[a-z][a-z0-9-]*`, a container
- *   element); `attrs`: extra attributes.
+ * @param init `tag`: host tag (lowercase `[a-z][a-z0-9-]*`); `attrs`: extra
+ *   attributes.
  * @returns An HTML string.
- * @throws TypeError on an invalid `tag` (or a void/raw-text one such as
- *   `input` or `textarea`) or attribute name.
+ * @throws TypeError on an invalid `tag` or attribute name, on `attrs` without
+ *   a `tag` in text mode, and on a tag that cannot carry the markup: void or
+ *   raw-text elements, `input` and `textarea` (render
+ *   {@link renderStaticText} as their value yourself), `select`, media,
+ *   table-structure and MathML elements, and SVG elements other than
+ *   `text`/`tspan`/`textpath`/`foreignobject`.
  *
  * @example
  * ```ts
  * renderStaticHTML({ value: 42 }, { tag: 'span', attrs: { class: 'score' } });
  * // <span class="rn-rolling-number score" role="img" aria-label="42" data-rn-ssr><span class="rn-ssr" data-rn-ssr>42</span></span>
+ * renderStaticHTML({ value: 3 }, { tag: 'option', attrs: { value: '3' } });
+ * // <option value="3">3</option>
  * ```
  */
 export function renderStaticHTML(
@@ -146,19 +160,26 @@ export function renderStaticHTML(
 ): string {
   const tag = init?.tag;
   if (tag !== undefined && (typeof tag !== 'string' || !TAG_RE.test(tag))) {
-    throw new TypeError(`[RollingNumber] renderStaticHTML: invalid tag ${JSON.stringify(String(tag))} (expected [a-z][a-z0-9-]*).`);
+    fail(`invalid tag ${JSON.stringify(String(tag))} (expected [a-z][a-z0-9-]*)`);
   }
-  if (tag !== undefined && NO_CHILD_TAGS.has(tag)) {
-    throw new TypeError(`[RollingNumber] renderStaticHTML: <${tag}> cannot hold the fallback child; use a container tag.`);
+  if (tag !== undefined && (NO_HOST.has(tag) || /^(fe|animate)[a-z]*$/.test(tag))) {
+    fail(`<${tag}> cannot host a counter: ${/^(input|textarea)$/.test(tag) ? 'render renderStaticText() as its value' : 'use a container'}`);
   }
-  const { text, label } = staticState(options);
-  const child = (attrs: Attr[]): string => `<span${renderAttrs(attrs)}>${escapeHtml(text)}</span>`;
+  const { text, label, mode } = staticState(options);
+  const content = escapeHtml(text);
+  // Text mode (§6): the host's own text, no columns markers or fallback child.
+  const textMode = mode == 'text' || (mode == 'auto' && /^(option|text|tspan|textpath)$/.test(tag as string));
+  const child = (attrs: Attr[]): string => `<span${renderAttrs(attrs)}>${content}</span>`;
   const fallbackAttrs = (): Attr[] => [['class', 'rn-ssr'], ['data-rn-ssr', null]];
 
   if (tag === undefined) {
-    const list = fallbackAttrs();
-    mergeAttrs(list, init?.attrs);
-    return child(list);
+    if (!textMode) {
+      const list = fallbackAttrs();
+      mergeAttrs(list, init?.attrs);
+      return child(list);
+    }
+    if (init?.attrs && Object.keys(init.attrs).length) fail('attrs need a tag in text mode');
+    return content;
   }
 
   const list: Attr[] = [];
@@ -170,9 +191,9 @@ export function renderStaticHTML(
       const value = optionAttrValue(raw);
       if (value !== null) list.push([OPTION_ATTRIBUTES[key], value]);
     }
-  } else {
+  } else if (!textMode) {
     list.push(['class', 'rn-rolling-number'], ['role', 'img'], ['aria-label', label], ['data-rn-ssr', null]);
   }
   mergeAttrs(list, init?.attrs);
-  return `<${tag}${renderAttrs(list)}>${child(fallbackAttrs())}</${tag}>`;
+  return `<${tag}${renderAttrs(list)}>${textMode ? content : child(fallbackAttrs())}</${tag}>`;
 }
