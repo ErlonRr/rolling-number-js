@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  The script-tag build loaded synchronously in <head>, then server-rendered
+  <rolling-number> elements in the body: the parser connects each element (and
+  its core starts) before it parses the element's SSR fallback child.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>rolling-number IIFE in head, SSR fallbacks</title>
+  <style>
+    html, body { margin: 0; background: #fff; color: #000; }
+    body { font: 40px/1 "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace; padding: 24px; }
+    rolling-number { margin-right: 24px; }
+  </style>
+  <script src="/dist/rolling-number.iife.js"></script>
+</head>
+<body>
+  <rolling-number id="child" value="42"><span class="rn-ssr" data-rn-ssr>42</span></rolling-number>
+  <rolling-number id="full" value="1234" class="rn-rolling-number" role="img" aria-label="1234" data-rn-ssr>
+    <span class="rn-ssr" data-rn-ssr>1234</span>
+  </rolling-number>
+  <script>document.documentElement.setAttribute('data-ready', '');</script>
+</body>
+</html>

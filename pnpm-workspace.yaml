@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+  # Native fallback downloader of an optional @custom-elements-manifest/analyzer
+  # dependency (only used by `cem analyze --dependencies`): not needed.
+  rs-module-lexer: false

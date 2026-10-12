@@ -1,0 +1,21 @@
+{
+  // Template typing of the Vue adapter, checked by `pnpm check:vue-types`
+  // (vue-tsc --noEmit -p tests/vue-types). Plain tsc cannot see SFC templates.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "preserve",
+    "types": []
+  },
+  // Vue's default template checking (not strictTemplates): fallthrough
+  // attributes and listeners such as `@click` are accepted, typed props and
+  // the `rn-start` / `rn-end` handlers are checked.
+  "include": ["./*.vue", "../../src/env.d.ts"]
+}

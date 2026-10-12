@@ -1,0 +1,24 @@
+<!doctype html>
+<!--
+  Generic stage of the visual suite: loads the built package (/dist) and
+  exposes it as window.RN; the specs build their hosts in #stage.
+  Query parameters (read by stage.js before any counter exists):
+    css=dist  → also link /dist/style.css (unlayered, as 1.x users do)
+    css=1.2   → link the pinned 1.2 stylesheet (fixtures/style-1.2.css)
+    inject=0  → configureRollingNumber({ injectStyles: false })
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>rolling-number visual stage</title>
+  <style>
+    html, body { margin: 0; background: #fff; color: #000; }
+    body { font: 40px/1 "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace; padding: 24px; }
+    #stage > * { margin: 0 24px 24px 0; }
+  </style>
+  <script type="module" src="./stage.js"></script>
+</head>
+<body>
+  <div id="stage"></div>
+</body>
+</html>

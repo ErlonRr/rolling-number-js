@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- The script-tag build with data-rn-inject="false": nothing is injected. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>rolling-number IIFE without injection</title>
+  <style>
+    html, body { margin: 0; background: #fff; color: #000; }
+    body { font: 40px/1 "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace; padding: 24px; }
+  </style>
+</head>
+<body>
+  <rolling-number id="el" value="1234" pad="5"></rolling-number>
+  <script src="/dist/rolling-number.iife.js" data-rn-inject="false"></script>
+  <script>document.documentElement.setAttribute('data-ready', '');</script>
+</body>
+</html>

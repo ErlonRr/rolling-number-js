@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  Served with "Content-Security-Policy: default-src 'self'; script-src 'self';
+  style-src 'self'; img-src 'self' data:" (vite.config.demo.ts, pages named
+  csp*.html): no inline <style>, no style attribute in markup, no inline script.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>rolling-number under CSP</title>
+  <script src="./csp-listen.js"></script>
+  <link rel="stylesheet" href="./csp.css">
+  <script type="module" src="./csp.js"></script>
+</head>
+<body>
+  <rolling-number id="el" value="1234" pad="5"></rolling-number>
+  <span id="core-host"></span>
+</body>
+</html>
