@@ -5,6 +5,11 @@ import { defineConfig, devices } from '@playwright/test';
  * Firefox and WebKit against a prebuilt page served locally. The specs live
  * in tests/visual/*.spec.ts (WP11); helpers in tests/visual/_harness.ts.
  *
+ * Server: `pnpm preview` (vite.config.demo.ts) serves the built demo at `/`,
+ * the built package at `/dist/` and the fixture pages of
+ * tests/visual/fixtures at `/fixtures/` (unbundled; `csp*.html` pages get a
+ * Content-Security-Policy header). Specs therefore always test `dist/`.
+ *
  * Environment overrides:
  * - `RN_VISUAL_SERVER`: command that serves the page (default: build the
  *   package and the demo, then `pnpm preview`). CI builds in a separate step
