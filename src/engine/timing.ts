@@ -35,17 +35,12 @@ export function parseCssTime(s: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-let countDefault: Easing | null = null;
-let rollDefault: Easing | null = null;
+const pathDefaults: { count?: Easing; roll?: Easing } = {};
 
-/** Path default easings, built once. */
+/** Path default easings (count: ease-out-cubic, roll: odometer), built once. */
 function pathDefault(kind: 'count' | 'roll'): Easing {
-  if (kind === 'count') {
-    if (!countDefault) countDefault = { fn: PRESETS['ease-out-cubic'], peak: peakSlope(PRESETS['ease-out-cubic']) };
-    return countDefault;
-  }
-  if (!rollDefault) rollDefault = { fn: PRESETS.odometer, peak: peakSlope(PRESETS.odometer) };
-  return rollDefault;
+  const fn = PRESETS[kind === 'count' ? 'ease-out-cubic' : 'odometer'];
+  return (pathDefaults[kind] ??= { fn, peak: peakSlope(fn) });
 }
 
 const warnedStrings = new Set<string>();
