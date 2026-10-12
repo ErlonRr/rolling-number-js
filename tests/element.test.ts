@@ -366,9 +366,9 @@ const OPTION_CASES: OptionCase[] = [
 ];
 
 describe('<rolling-number> 1.3 attributes and properties', () => {
-  it('observes every option attribute (OPTION_ATTRIBUTES) plus no-interpolate', () => {
+  it('observes every option attribute (OPTION_ATTRIBUTES) plus no-interpolate and class', () => {
     expect([...RollingNumberElement.observedAttributes].sort()).toEqual(
-      [...Object.values(OPTION_ATTRIBUTES), 'no-interpolate'].sort()
+      [...Object.values(OPTION_ATTRIBUTES), 'no-interpolate', 'class'].sort()
     );
   });
 
@@ -844,5 +844,58 @@ describe('<rolling-number> events and reconnection', () => {
     other.appendChild(el);
     expect(getResolved(coreOf(el)).from).toBeNull();
     expect(digitsOf(el)).toBe('50');
+  });
+});
+
+describe('<rolling-number> class attribute written by a framework', () => {
+  it('a replaced class attribute (React 18 `class`, Vue `:class`) keeps rn-rolling-number', () => {
+    const el = mount('<rolling-number value="5" class="a"></rolling-number>');
+    expect(el.className).toBe('a rn-rolling-number');
+
+    el.setAttribute('class', 'b'); // React 18: setAttribute('class', …)
+    expect(el.className).toBe('b rn-rolling-number');
+    el.className = 'c'; // Vue: el.className = …
+    expect(el.className).toBe('c rn-rolling-number');
+    el.removeAttribute('class');
+    expect(el.className).toBe('rn-rolling-number');
+    expect(digitsOf(el)).toBe('5');
+  });
+
+  it('re-renders once per clobbered class (no loop), and not at all when the class is kept', () => {
+    const el = mount('<rolling-number value="5"></rolling-number>');
+    const render = vi.spyOn(coreOf(el), 'render');
+    el.className = 'b';
+    expect(render).toHaveBeenCalledTimes(1);
+    el.classList.add('c'); // the library class is still there
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the animating markers when the class is replaced mid-motion', () => {
+    const el = mount('<rolling-number value="5"></rolling-number>');
+    el.value = 80;
+    raf.frame(0);
+    expect(el.getAttribute('data-rn-state')).toBe('animating');
+    el.className = 'b';
+    expect(el.className).toBe('b rn-rolling-number rn-interpolating');
+    raf.runAll(16);
+    expect(el.className).toBe('b rn-rolling-number');
+    expect(digitsOf(el)).toBe('80');
+  });
+
+  it('a class change while disconnected does not add the library class', () => {
+    const el = mount('<rolling-number value="5" class="a"></rolling-number>');
+    el.remove();
+    expect(el.className).toBe('a');
+    el.className = 'b';
+    expect(el.className).toBe('b');
+    document.body.appendChild(el);
+    expect(el.className).toBe('b rn-rolling-number');
+  });
+
+  it('text mode never adds the library class', () => {
+    const el = mount('<rolling-number value="5" mode="text"></rolling-number>');
+    el.className = 'b';
+    expect(el.className).toBe('b');
+    expect(el.textContent).toBe('5');
   });
 });

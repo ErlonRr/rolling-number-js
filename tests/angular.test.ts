@@ -5,19 +5,27 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  Component,
   ElementRef,
   EventEmitter,
   Injector,
   NgZone,
   PLATFORM_ID,
+  RendererFactory2,
+  createComponent,
+  createEnvironmentInjector,
   inject,
   runInInjectionContext,
   ɵAfterRenderManager,
   ɵChangeDetectionScheduler,
   ɵINJECTOR_SCOPE,
+  type ComponentRef,
+  type EnvironmentInjector,
+  type Renderer2,
   type SimpleChanges,
   type StaticProvider
 } from '@angular/core';
+import { NgIf } from '@angular/common';
 import { RollingNumberDirective } from '../src/angular';
 import { RollingNumberCore, getResolved } from '../src/core';
 import type { RollingNumberEvent } from '../src/types';
@@ -761,5 +769,110 @@ describe('RollingNumberDirective (lifecycle, no TestBed)', () => {
       expect(dir.core).not.toBeNull();
       dir.ngOnDestroy();
     });
+  });
+});
+
+/**
+ * The directive in a real (JIT-compiled) template, so Angular itself orders
+ * bindings, lifecycle hooks and embedded views. `@angular/platform-browser` is
+ * not a dev dependency: a minimal DOM renderer stands in for it.
+ */
+describe('RollingNumberDirective in a template (JIT)', () => {
+  const zone = { runOutsideAngular: <T>(fn: () => T): T => fn(), run: <T>(fn: () => T): T => fn() };
+  const NS: Record<string, string> = { svg: 'http://www.w3.org/2000/svg', math: 'http://www.w3.org/1998/Math/MathML' };
+  const renderer = {
+    data: {},
+    destroyNode: null,
+    destroy() {},
+    createElement: (name: string, ns?: string | null) => (ns ? document.createElementNS(NS[ns] ?? ns, name) : document.createElement(name)),
+    createComment: (text: string) => document.createComment(text),
+    createText: (text: string) => document.createTextNode(text),
+    appendChild: (parent: Node, child: Node) => parent.appendChild(child),
+    insertBefore: (parent: Node, child: Node, ref: Node | null) => parent.insertBefore(child, ref),
+    removeChild: (_parent: Node | null, child: ChildNode) => child.remove(),
+    selectRootElement: (node: Element) => node,
+    parentNode: (node: Node) => node.parentNode,
+    nextSibling: (node: Node) => node.nextSibling,
+    setAttribute: (el: Element, name: string, value: string) => el.setAttribute(name, value),
+    removeAttribute: (el: Element, name: string) => el.removeAttribute(name),
+    addClass: (el: Element, name: string) => el.classList.add(name),
+    removeClass: (el: Element, name: string) => el.classList.remove(name),
+    setStyle: (el: HTMLElement, name: string, value: string) => el.style.setProperty(name, value),
+    removeStyle: (el: HTMLElement, name: string) => el.style.removeProperty(name),
+    setProperty: (el: Record<string, unknown>, name: string, value: unknown) => {
+      el[name] = value;
+    },
+    setValue: (node: Node, value: string) => {
+      node.nodeValue = value;
+    },
+    listen: (target: EventTarget, type: string, cb: (e: Event) => unknown) => {
+      target.addEventListener(type, cb);
+      return () => target.removeEventListener(type, cb);
+    }
+  } as unknown as Renderer2;
+
+  let refs: ComponentRef<unknown>[] = [];
+
+  beforeEach(() => {
+    installRaf();
+    stubReducedMotion(false);
+    anr.impl = 'real';
+    // esbuild emits no `design:paramtypes`: tell the JIT compiler what the constructor injects.
+    Object.defineProperty(RollingNumberDirective, 'ctorParameters', { value: () => [{ type: ElementRef }], configurable: true });
+  });
+
+  afterEach(() => {
+    for (const ref of refs) ref.destroy();
+    refs = [];
+    document.body.replaceChildren();
+  });
+
+  /** Renders `template` with `state` as the component; `detect()` runs one change detection. */
+  function mountTemplate<T extends object>(template: string, state: T): { root: HTMLElement; state: T; detect(): void } {
+    @Component({ standalone: true, imports: [RollingNumberDirective, NgIf], template })
+    class Host {
+      constructor() {
+        Object.assign(this, state);
+      }
+    }
+    const env = createEnvironmentInjector(
+      [
+        { provide: RendererFactory2, useValue: { createRenderer: () => renderer, begin() {}, end() {} } },
+        { provide: NgZone, useValue: zone },
+        { provide: PLATFORM_ID, useValue: 'browser' }
+      ],
+      Injector.NULL as EnvironmentInjector
+    );
+    const root = document.body.appendChild(document.createElement('div'));
+    const ref = createComponent(Host, { environmentInjector: env, hostElement: root });
+    refs.push(ref);
+    const detect = () => ref.changeDetectorRef.detectChanges();
+    detect();
+    return { root, state: ref.instance as T, detect };
+  }
+
+  it('[className] on the host keeps the library class (re-applied in ngDoCheck)', () => {
+    const { root, state, detect } = mountTemplate('<span [rollingNumber]="n" [className]="cls"></span>', { n: 5, cls: 'a' });
+    const span = root.querySelector('span')!;
+    expect(span.className).toBe('a rn-rolling-number');
+
+    state.cls = 'b';
+    detect();
+    expect(span.className).toBe('b rn-rolling-number');
+    expect(digitsOf(span)).toBe('5');
+  });
+
+  it('ngDoCheck only re-renders when the library class is missing (and never in text mode)', () => {
+    const { root, state, detect } = mountTemplate(
+      '<span [rollingNumber]="n" [className]="cls"></span><input [rollingNumber]="n" [className]="cls" />',
+      { n: 5, cls: 'a' }
+    );
+    const render = vi.spyOn(RollingNumberCore.prototype, 'render');
+    detect();
+    expect(render).not.toHaveBeenCalled();
+    state.cls = 'b';
+    detect();
+    expect(render).toHaveBeenCalledTimes(1); // the span only
+    expect(root.querySelector('input')!.className).toBe('b');
   });
 });

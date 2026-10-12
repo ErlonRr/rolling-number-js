@@ -24,6 +24,8 @@ const ATTRIBUTE_FIELDS = {
   'inject-styles': 'injectStyles',
   'no-interpolate': null
 };
+/** Global HTML attributes listed in `observedAttributes` that are not element options. */
+const GLOBAL_ATTRIBUTES = ['class'];
 
 /** @returns {import('@custom-elements-manifest/analyzer').Plugin} */
 function rollingNumberManifest() {
@@ -37,8 +39,11 @@ function rollingNumberManifest() {
 
       element.superclass = { name: 'HTMLElement', package: 'global:' };
 
+      // `class` is observed (to restore the library class), but it is the global attribute, not an option.
+      element.attributes = (element.attributes ?? []).filter((attr) => !GLOBAL_ATTRIBUTES.includes(attr.name));
+
       const publicFields = (element.members ?? []).filter((m) => m.kind === 'field' && !m.static && !m.privacy);
-      for (const attr of element.attributes ?? []) {
+      for (const attr of element.attributes) {
         const fieldName = Object.hasOwn(ATTRIBUTE_FIELDS, attr.name) ? ATTRIBUTE_FIELDS[attr.name] : attr.name;
         if (fieldName === null) continue;
         const field = publicFields.find((m) => m.name === fieldName);

@@ -248,9 +248,13 @@ export class RollingNumberElement extends HTMLElementBase {
    */
   private declare formatCache: { attr: string | null; value: RollingNumberFormat | null };
 
-  /** Attributes that drive the counter: every option attribute plus `no-interpolate`. */
+  /**
+   * Attributes that drive the counter: every option attribute plus
+   * `no-interpolate`, and `class` (to put the library class back when a
+   * framework replaces the whole class).
+   */
   static get observedAttributes(): string[] {
-    return [...ATTRIBUTE_KEYS.keys()];
+    return [...ATTRIBUTE_KEYS.keys(), 'class'];
   }
 
   constructor() {
@@ -297,12 +301,18 @@ export class RollingNumberElement extends HTMLElementBase {
   /** Forwards attribute changes to the counter (the only path from attributes and properties to it). */
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (oldValue === newValue) return;
+    const core = this.core;
+    if (name === 'class') {
+      // A framework replaced the class (React 18 `class`, Vue `:class`): render() adds the
+      // library class back, and that write lands here again with the class present.
+      if (core && !this.classList.contains('rn-rolling-number')) core.render();
+      return;
+    }
     const key = ATTRIBUTE_KEYS.get(name);
     if (key === undefined) return;
     // A string attribute replaces a function assigned through the property.
     if (newValue !== null && (key === 'easing' || key === 'label')) this.fnSlot[key] = null;
 
-    const core = this.core;
     if (!core || key === 'from') return; // `from` is creation-only
 
     if (key === 'value') {

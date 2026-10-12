@@ -1,6 +1,7 @@
 import {
   AfterViewInit,
   Directive,
+  DoCheck,
   ElementRef,
   EventEmitter,
   Injector,
@@ -132,7 +133,7 @@ function observed(emitter: EventEmitter<RollingNumberEvent>): boolean {
   exportAs: 'rollingNumber',
   standalone: true
 })
-export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges, OnDestroy {
+export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges, DoCheck, OnDestroy {
   /** Normalized options; `null` = unset/auto where the core allows it (S5: duration/easing). */
   private readonly o: NormalizedOptions = { ...RN_DEFAULTS_13 };
   private _target = 'auto';
@@ -512,6 +513,14 @@ export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges,
       if (key) update[key] = this.o[key];
     }
     this.zone.runOutsideAngular(() => core.update(update as RollingNumberUpdate));
+  }
+
+  /** Puts the library class back when a `[className]` binding on the host replaced the whole class. */
+  ngDoCheck(): void {
+    const core = this._core;
+    if (core && core.getMode() === 'columns' && !this.target!.classList.contains('rn-rolling-number')) {
+      this.zone.runOutsideAngular(() => core.render());
+    }
   }
 
   /** Destroys the core and removes the nodes the directive created. */

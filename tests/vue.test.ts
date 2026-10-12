@@ -23,6 +23,7 @@ import {
   type RollingNumberProps
 } from '../src/vue';
 import { RollingNumberCore, getResolved } from '../src/core';
+import { defineRollingNumber } from '../src/element';
 import type { RollingNumberEvent, RollingNumberFormat } from '../src/types';
 import { digitsOf, installRaf, stubReducedMotion, type RafController } from './helpers';
 
@@ -698,5 +699,20 @@ describe('v-rolling-number (Vue directive) v1.3', () => {
     expect(input.hasAttribute('data-rn-ssr')).toBe(false);
     expect(input.value).toBe('5');
     callHook('unmounted', input, 5);
+  });
+});
+
+describe('<rolling-number> custom element in Vue', () => {
+  it('a re-render that changes `class` keeps the library class', async () => {
+    defineRollingNumber();
+    const cls = ref('a');
+    mountApp(() => () => h('rolling-number', { class: cls.value, value: 5 }));
+    const el = container.querySelector('rolling-number')!;
+    expect(el.className).toBe('a rn-rolling-number');
+
+    cls.value = 'b';
+    await nextTick();
+    expect(el.className).toBe('b rn-rolling-number');
+    expect(digitsOf(el)).toBe('5');
   });
 });

@@ -13,6 +13,7 @@ import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { RollingNumber, useRollingNumber, type RollingNumberProps } from '../src/react';
 import { RollingNumberCore, getResolved, type RollingNumberOptions } from '../src/core';
+import { defineRollingNumber } from '../src/element';
 import { OPTION_ATTRIBUTES, OPTION_KEYS } from '../src/options';
 import type { RollingNumberEvent, RollingNumberUpdate } from '../src/types';
 import { digitsOf, installRaf, loose, stubReducedMotion, type RafController } from './helpers';
@@ -665,5 +666,21 @@ describe('useRollingNumber v1.3 (React)', () => {
     render(createElement(Host));
     expect(core!.current!.getHost()).toBe(container.querySelector('div'));
     expect(digitsOf(container.querySelector('div')!)).toBe('12');
+  });
+});
+
+describe('<rolling-number> custom element in React 18', () => {
+  it('a re-render that changes `class` keeps the library class', () => {
+    defineRollingNumber();
+    render(createElement('rolling-number', { class: 'a', value: 5 }));
+    const el = container.querySelector('rolling-number')!;
+    expect(el.className).toBe('a rn-rolling-number');
+
+    render(createElement('rolling-number', { class: 'b', value: 5 }));
+    expect(el.className).toBe('b rn-rolling-number');
+    expect(digitsOf(el)).toBe('5');
+
+    render(createElement('rolling-number', { value: 5 })); // React removes the class attribute
+    expect(el.className).toBe('rn-rolling-number');
   });
 });
