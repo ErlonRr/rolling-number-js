@@ -721,3 +721,163 @@ describe('trigger: "visible" and the from intro (§8.3)', () => {
     expect(digitsOf(host)).toBe('100');
   });
 });
+
+describe('session edge cases', () => {
+  let io: IoController;
+  beforeEach(() => {
+    io = installIntersectionObserver();
+  });
+
+  it('a settle survives a retarget from another counter’s rn-end handler in the same frame', async () => {
+    const a = makeHost();
+    const b = makeHost();
+    const ca = create(a, { value: 0 });
+    const cb = create(b, { value: 0 });
+    const log = recordEvents(b);
+    let next: Promise<RollingNumberSettled> | null = null;
+    a.addEventListener('rn-end', () => {
+      next = cb.setValue(500);
+    }, { once: true });
+    void ca.setValue(10);
+    const first = cb.setValue(20);
+    raf.runAll();
+    expect(await first).toEqual({ value: 20, completed: true });
+    expect(await next!).toEqual({ value: 500, completed: true });
+    expect(log).toEqual(['rn-start:20:true', 'rn-end:20:true', 'rn-start:500:true', 'rn-end:500:true']);
+    expect(digitsOf(b)).toBe('500');
+  });
+
+  it('a layout update with a value while hidden: the finished target ends, the new one waits (no stale rn-end)', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0, trigger: 'visible' });
+    io.intersect(host, 1);
+    const first = core.setValue(100);
+    raf.frame(0);
+    raf.frame(100);
+    io.intersect(host, 0);
+    const log = recordEvents(host, true);
+    core.update({ pad: 3, value: 50 });
+    let settled: RollingNumberSettled | null = null;
+    void core.whenSettled().then((s) => (settled = s));
+    expect(await first).toEqual({ value: 100, completed: true });
+    await flush();
+    expect(log).toEqual(['rn-end:100:true:from=0']);
+    expect(settled).toBeNull();
+    expect(digitsOf(host)).toBe('100');
+    io.intersect(host, 1);
+    raf.runAll(200);
+    await flush();
+    expect(settled).toEqual({ value: 50, completed: true });
+    expect(log).toEqual(['rn-end:100:true:from=0', 'rn-start:50:true:from=100', 'rn-end:50:true:from=100']);
+    expect(digitsOf(host)).toBe('050');
+  });
+
+  it('an instant change, then a change that waits for visibility in the same task: no stale microtask end', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    const log = recordEvents(host, true);
+    const five = core.setValue(5, { motion: 'none' });
+    core.update({ trigger: 'visible' });
+    const ten = core.setValue(10);
+    expect(await five).toEqual({ value: 5, completed: false });
+    await flush();
+    expect(log).toEqual([]);
+    expect(digitsOf(host)).toBe('5');
+    io.intersect(host, 1);
+    raf.runAll();
+    expect(await ten).toEqual({ value: 10, completed: true });
+    expect(log).toEqual(['rn-start:10:true:from=0', 'rn-end:10:true:from=0']);
+  });
+
+  it('destroy() in an rn-start handler of an instant change: no rn-end, completed: false', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    host.addEventListener('rn-start', () => core.destroy());
+    const log = recordEvents(host);
+    expect(await core.setValue(5, { motion: 'none' })).toEqual({ value: 5, completed: false });
+    await flush();
+    expect(log).toEqual(['rn-start:5:false']);
+  });
+
+  it('live: the announcement is the settled label, even when an rn-end handler sets a new value', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const host = makeHost();
+      const core = create(host, { value: 0, live: 'polite', label: 'Score {value}' });
+      host.addEventListener('rn-end', () => void core.setValue(9), { once: true });
+      void core.setValue(5, { motion: 'none' });
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      expect(host.getAttribute('aria-label')).toBe('Score 9');
+      vi.advanceTimersByTime(301);
+      expect(document.querySelector('[data-rn-live]')!.textContent).toBe('Score 5');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('update({ <layout key>, value }) mid-motion: the finished target gets its rn-end and completed: true', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    const first = core.setValue(100);
+    raf.frame(0);
+    raf.frame(100);
+    const log = recordEvents(host, true);
+    core.update({ pad: 3, value: 50 });
+    const second = core.whenSettled();
+    expect(log).toEqual([]);
+    expect(await first).toEqual({ value: 100, completed: true });
+    expect(log).toEqual(['rn-end:100:true:from=0']);
+    raf.runAll(116);
+    expect(await second).toEqual({ value: 50, completed: true });
+    expect(log).toEqual(['rn-end:100:true:from=0', 'rn-start:50:true:from=100', 'rn-end:50:true:from=100']);
+  });
+
+  it('a layout change re-quantizes pending promises: an old target never matches a new one by accident', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    const log = recordEvents(host);
+    const five = core.setValue(5, { motion: 'none' });
+    core.update({ decimals: 1, value: 0.5 }); // 0.5 is A = 5 in the new units, like 5 was in the old ones
+    expect(await five).toEqual({ value: 5, completed: false });
+    raf.runAll();
+    expect(await core.whenSettled()).toEqual({ value: 0.5, completed: true });
+    expect(log).toEqual(['rn-start:0.5:true', 'rn-end:0.5:true']);
+  });
+
+  it('finish() while waiting from rest reports the display it started from', () => {
+    const host = makeHost();
+    const core = create(host, { value: 0, trigger: 'visible' });
+    const log = recordEvents(host, true);
+    void core.setValue(5);
+    core.finish();
+    expect(log).toEqual(['rn-start:5:false:from=0', 'rn-end:5:false:from=0']);
+  });
+
+  it('while waiting, setting the displayed value back resolves at once with no events and stops waiting', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0, trigger: 'visible' });
+    const log = recordEvents(host);
+    const five = core.setValue(5);
+    const zero = core.setValue(0);
+    expect(await five).toEqual({ value: 5, completed: false });
+    expect(await zero).toEqual({ value: 0, completed: true });
+    expect(host.getAttribute('aria-label')).toBe('0');
+    io.intersect(host, 1);
+    expect(core.isAnimating()).toBe(false);
+    expect(raf.pending()).toBe(0);
+    await flush();
+    expect(log).toEqual([]);
+    expect(await core.whenSettled()).toEqual({ value: 0, completed: true });
+  });
+
+  it('an instant retarget of an animated session ends it with animated: true, like finish()', async () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    const log = recordEvents(host);
+    void core.setValue(100);
+    raf.frame(0);
+    raf.frame(100);
+    expect(await core.setValue(50, { motion: 'none' })).toEqual({ value: 50, completed: true });
+    expect(log).toEqual(['rn-start:100:true', 'rn-end:50:true']);
+  });
+});

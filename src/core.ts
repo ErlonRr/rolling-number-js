@@ -133,6 +133,14 @@ interface Waiter {
   resolve: (settled: RollingNumberSettled) => void;
 }
 
+/** A motion session taken for its end: event detail, promises, `rn-start` still due, settled label. */
+interface Session {
+  d: RollingNumberEventDetail;
+  list: Waiter[];
+  start: boolean;
+  label: string;
+}
+
 /**
  * State and logic of one core. Written as a closure (its locals mangle;
  * class members do not) and driven by the public {@link RollingNumberCore}
@@ -271,8 +279,9 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     post: () => {
       if (done) {
         done = false;
-        end(!!plan);
-      } else if (!started) {
+        end();
+      } else if (!started && plan) {
+        // `plan` unset: restarted by a handler after this frame's read phase; rn-start comes with its first frame.
         started = true;
         emit('rn-start', detail(true));
       }
@@ -436,7 +445,7 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
 
   const getDisplayValue = (): number => shown / 10 ** fmt.f / fmt.scale || 0;
 
-  /** Event detail of the current session. */
+  /** Event detail of the current session (`animated`: its `rn-start` already fired animated). */
   const detail = (animated: boolean): RollingNumberEventDetail => ({ value, from: from ?? getDisplayValue(), animated });
 
   /** Dispatches `rn-start` / `rn-end` on the host with the host realm's CustomEvent (bubbles, composed). */
@@ -445,45 +454,52 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     if (Ctor) host.dispatchEvent(new Ctor(type, { detail: d, bubbles: true, composed: true }));
   };
 
-  /**
-   * Ends the session: `rn-start` if it never fired, `rn-end`, then the
-   * promises and the live announcement. State is committed before dispatch,
-   * so handlers may call setValue().
-   */
-  const end = (animated: boolean): void => {
-    const d = detail(animated);
-    const list = waiters;
-    const start = !started;
+  /** Takes the current session (detail, promises, settled label); the next change starts a new one. */
+  const take = (): Session => {
+    const s: Session = { d: detail(started), list: waiters, start: !started, label };
     waiters = [];
     from = undefined;
     started = false;
-    if (start) emit('rn-start', d);
-    emit('rn-end', { ...d });
-    settle(list, true);
-    if (!dead && opts.live !== 'off') announce(host, label, opts.live);
+    return s;
   };
 
-  /** Ends the session in a microtask (instant changes; never inside setValue()/update()). */
-  const later = (animated: boolean): void => {
+  /**
+   * Ends a taken session: `rn-start` if it never fired, `rn-end`, then the
+   * promises and the live announcement of its settled label. State is
+   * committed before dispatch, so handlers may call setValue(); after a
+   * destroy() (also from the `rn-start` handler) it only resolves `completed: false`.
+   */
+  const fire = (s: Session): void => {
+    if (s.start && !dead) emit('rn-start', s.d);
+    if (dead) return settle(s.list, false);
+    emit('rn-end', { ...s.d });
+    settle(s.list, true);
+    if (!dead && opts.live !== 'off') announce(host, s.label, opts.live);
+  };
+
+  const end = (): void => fire(take());
+
+  /** Ends the session in a microtask unless another change comes first (instant changes; never inside setValue()/update()). */
+  const later = (): void => {
     const e = ++epoch;
     microtask(() => {
-      if (!dead && e === epoch) end(animated);
+      if (!dead && e === epoch) end();
     });
   };
 
-  /** Jumps to the target (see finish()); `defer` dispatches the events in a microtask. */
+  /**
+   * Jumps to the target (see finish()) and ends that session; `defer`
+   * dispatches its events in a microtask, unaffected by later changes.
+   */
   const jump = (defer?: boolean): void => {
     if (dead || !(moving || waiting)) return;
-    const animated = started;
     halt();
     waiting = false;
     land();
     mark(false, true);
-    if (defer) later(animated);
-    else {
-      epoch++;
-      end(animated);
-    }
+    const s = take();
+    if (defer) microtask(() => fire(s));
+    else fire(s);
   };
 
   /**
@@ -495,12 +511,11 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     const r = renderer;
     const t = timing(call);
     waiting = false;
-    from ??= getDisplayValue();
     if (!r || t.instant || !r.canAnimate()) {
       halt();
       land();
       mark(false, true);
-      later(false);
+      later();
       return;
     }
     epoch++;
@@ -541,21 +556,35 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
 
     ensureStyles(host, opts.injectStyles);
     call = animate;
-    if (opts.trigger === 'visible' && seen !== true) {
-      // Waiting for visibility: the label is up to date, the display is frozen.
-      if (moving) {
-        halt();
-        mark(false, true);
-      }
-      waiting = true;
+    if (!mid && target === restA && !started) {
+      // Waiting, and set back to the value at rest on screen (§8.2 step 2): resolve now, no events.
+      waiting = false;
+      settle(take().list, true);
     } else {
-      go();
+      from ??= getDisplayValue();
+      if (opts.trigger === 'visible' && seen !== true) {
+        // Waiting for visibility: the label is up to date, the display is frozen,
+        // and a pending instant end belongs to this session now.
+        if (moving) {
+          halt();
+          mark(false, true);
+        }
+        waiting = true;
+        epoch++;
+      } else {
+        go();
+      }
     }
     return promise;
   };
 
   const setValue = (input: number, animate?: boolean | RollingNumberSetValueOptions): Promise<RollingNumberSettled> => {
     const v = normalizeValue(input);
+    // Settled in this frame, post phase not run yet (called by another counter's post handler): end it first.
+    if (done && !dead) {
+      done = false;
+      end();
+    }
     value = v;
     if (dead) return Promise.resolve({ value: v, completed: false });
 
@@ -646,6 +675,8 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
         fmt = nextFmt;
         Amax = nextFmt.maxA(next.max);
         A1 = restA = nextFmt.quantize(value);
+        // Promises still pending (an instant end due in a microtask) compare targets in the new units.
+        for (const w of waiters) w.A = nextFmt.quantize(w.value);
         shown = clampA(A1, Amax);
         const rest = restOf(A1);
         if (nextRes !== res) {
