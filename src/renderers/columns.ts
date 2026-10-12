@@ -130,8 +130,10 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
   /** motion state (between begin() and rest()) */
   let moving = false;
   let motionKind: 'count' | 'roll' = 'count';
-  /** reference column width in px (read phase) */
+  /** reference column width in layout px (read phase) */
   let colW: number | null = null;
+  /** begin() ran and measure() has not read the widths from a rendered box yet */
+  let unmeasured = false;
   /** sign interpolation: `sigma` (negative-only sign) or `lerp` (a positive sign is shown at an endpoint) */
   let signMode: 'sigma' | 'lerp' = 'sigma';
   let signNegText: string | null = null;
@@ -377,7 +379,7 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
   const rest = (r: RestState): void => {
     if (destroyed) return;
     glyphs = r.glyphs;
-    moving = false;
+    moving = unmeasured = false;
     signMode = 'sigma';
     signNegText = null;
     signPosText = null;
@@ -539,11 +541,12 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
       if (sign) sign.negative = signMode === 'sigma' || (signNegText !== null && sign.text === signNegText);
 
       motionKind = kind;
-      moving = true;
+      moving = unmeasured = true;
     },
 
+    // O(1) once the current motion is measured: callable in every read phase.
     measure(): void {
-      if (destroyed) return;
+      if (destroyed || !unmeasured) return;
       // Every column has the same width (inline-grid: widest of sizer and cells),
       // so any column that is not collapsed is the reference for entering ones.
       // --rn-w is a layout width, while client rects (boxes and Ranges) include
@@ -563,7 +566,12 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
         }
         if (!fallback) fallback = node;
       }
-      colW = w !== null ? w : colW ?? (fallback ? rangeWidth(fallback.sizer) : null);
+      if (w === null) w = colW ?? (fallback ? rangeWidth(fallback.sizer) : null);
+      // A host without a box (display: none) measures 0: keep the motion
+      // unmeasured, so the next read phase measures it again.
+      if (w === 0) return;
+      colW = w;
+      unmeasured = false;
 
       for (const node of seq) {
         if (node.kind === 'digit' || !mayCollapse(node)) continue;

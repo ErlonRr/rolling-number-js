@@ -454,6 +454,39 @@ describe('columns renderer: measure()', () => {
     expect(wOf(sign)).toBe('11px');
   });
 
+  it('a host hidden (display: none) at measure time is not measured as 0 px; the next measure() measures it', () => {
+    const geo = stubGeometry({ col: 20, perChar: 10, computed: true });
+    const o = { suffix: ' kg' };
+    const { r, host } = setup(restOf(99));
+    geo.hidden = true;
+    r.begin(motionOf(layoutOf(shapeOf(99)), layoutOf(shapeOf(-100, o), o)), 'count', restOf(-100, o));
+    r.measure();
+    const f = frameOf(3, { q: 0.5, pos: [0, 0, 0], inn: [1, 1, 0.5], lead: [0, 0, 1], sigma: 0.5 });
+    r.frame(f);
+    for (const k of ['i2', 'sign', 'suf']) expect(wOf(key(host, k))).toBe('');
+    geo.hidden = false;
+    r.measure();
+    r.frame(f);
+    expect(wOf(key(host, 'i2'))).toBe('20px');
+    expect(wOf(key(host, 'sign'))).toBe('10px');
+    expect(wOf(key(host, 'suf'))).toBe('30px');
+  });
+
+  it('measure() reads nothing once the motion is measured, until the next begin()', () => {
+    const geo = stubGeometry({ col: 20, perChar: 10, computed: true });
+    const { r } = setup(restOf(-99));
+    r.begin(motion(-99, 100), 'count', restOf(100));
+    r.measure();
+    const reads = geo.boxes.length;
+    expect(reads).toBeGreaterThan(0);
+    r.measure();
+    r.measure();
+    expect(geo.boxes.length).toBe(reads);
+    r.begin(motion(100, 1000), 'count', restOf(1000));
+    r.measure();
+    expect(geo.boxes.length).toBeGreaterThan(reads);
+  });
+
   it('without a measure, collapsed nodes keep the 0px fallback (no --rn-w)', () => {
     const { r, host } = setup(restOf(9));
     r.begin(motion(9, 10), 'count', restOf(10));
