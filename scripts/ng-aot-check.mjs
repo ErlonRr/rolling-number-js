@@ -243,9 +243,16 @@ check('the Angular linker links dist/angular.js (unknownDeclarationVersionHandli
   assert(/ɵɵdefineDirective/.test(code), 'no ɵɵdefineDirective after linking');
   // The linked @angular/common sits next to it (see below).
   writeFileSync(join(linkedDir, 'angular.js'), code.replace(/(from\s*)(["'])@angular\/common\2/g, '$1$2./angular-common.js$2'));
-  // Copy the shared chunks the entry imports (e.g. ./core-xxxx.js).
-  for (const [, spec] of code.matchAll(/from\s*["'](\.\/[^"']+)["']/g)) {
-    copyFileSync(join(root, 'dist', spec), join(linkedDir, spec));
+  // Copy the shared chunks the entry imports, transitively (e.g. ./core-xxxx.js → ./format-xxxx.js).
+  const pending = [code];
+  const copied = new Set();
+  while (pending.length) {
+    for (const [, spec] of pending.pop().matchAll(/(?:from\s*|import\s*)["'](\.\/[^"']+)["']/g)) {
+      if (copied.has(spec)) continue;
+      copied.add(spec);
+      copyFileSync(join(root, 'dist', spec), join(linkedDir, spec));
+      pending.push(readFileSync(join(root, 'dist', spec), 'utf8'));
+    }
   }
   const requireFromApp = createRequire(join(work, 'package.json'));
   const common = join(dirname(requireFromApp.resolve('@angular/common/package.json')), 'fesm2022', 'common.mjs');

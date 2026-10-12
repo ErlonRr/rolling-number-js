@@ -123,16 +123,6 @@ export function getResolved(core: RollingNumberCore): Readonly<NormalizedOptions
   return Object.freeze({ ...core['opts'], value: core['value'], f: core['fmt'].f });
 }
 
-/**
- * Live counting duration of a core instance (400 when unset), used by the
- * `<rolling-number>` element's `duration` getter. Not part of the public
- * package API (superseded by {@link getResolved}).
- * @internal
- */
-export function getCoreDuration(core: RollingNumberCore): number {
-  return getResolved(core).duration ?? RN_DEFAULTS.duration;
-}
-
 /** A promise waiting for a target to settle. */
 interface Waiter {
   /** quantized target it waits for */
