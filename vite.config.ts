@@ -37,10 +37,27 @@ function angularPartialCompilation(): Plugin {
   };
 }
 
+/**
+ * Escapes non-ASCII characters of the emitted stylesheet (the decorator's
+ * U+2060/U+2007): a linked style.css served without a UTF-8 charset would
+ * otherwise mis-decode them. The JS bundles are ES modules / CJS, always
+ * decoded as UTF-8, and must keep Angular's ɵ identifiers verbatim.
+ */
+function asciiCss(): Plugin {
+  return {
+    name: 'rolling-number:ascii-css',
+    enforce: 'post',
+    generateBundle(_, bundle) {
+      for (const file of Object.values(bundle)) {
+        if (file.type === 'asset' && file.fileName.endsWith('.css') && typeof file.source === 'string') {
+          file.source = file.source.replace(/[^\x00-\x7f]/gu, (ch) => `\\${ch.codePointAt(0)!.toString(16)} `);
+        }
+      }
+    }
+  };
+}
+
 export default defineConfig({
-  // Escape non-ASCII characters (the decorator's U+2060/U+2007, the U+2212
-  // minus) so dist/ decodes correctly even when served without a UTF-8 charset.
-  esbuild: { charset: 'ascii' },
   build: {
     lib: {
       entry: {
@@ -83,5 +100,5 @@ export default defineConfig({
     },
     sourcemap: true
   },
-  plugins: [angularPartialCompilation()]
+  plugins: [angularPartialCompilation(), asciiCss()]
 });

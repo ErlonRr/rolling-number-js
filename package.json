@@ -162,7 +162,7 @@
     "check:ng-aot": "node scripts/ng-aot-check.mjs",
     "check:vue-types": "vue-tsc --noEmit -p tests/vue-types",
     "lint:pkg": "publint && attw --pack . --profile node16 --exclude-entrypoints ./style.css ./iife",
-    "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test && pnpm run smoke && pnpm run check:ng-aot && pnpm run lint:pkg"
+    "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test && pnpm run smoke && pnpm run check:ng-aot && pnpm run lint:pkg && pnpm run size"
   },
   "keywords": [
     "rolling-number",

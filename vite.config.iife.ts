@@ -29,6 +29,8 @@ function dropCssAssets(): Plugin {
 export default defineConfig({
   // A public/ folder must never be copied into dist/.
   publicDir: false,
+  // Same as the library build: non-ASCII characters are escaped.
+  esbuild: { charset: 'ascii' },
   build: {
     emptyOutDir: false,
     copyPublicDir: false,

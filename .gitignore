@@ -5,6 +5,11 @@ node_modules/
 dist/
 dist-demo/
 
+# Playwright and the CI compat job
+playwright-report/
+test-results/
+.compat/
+
 # IDE / System
 .DS_Store
 *.log
