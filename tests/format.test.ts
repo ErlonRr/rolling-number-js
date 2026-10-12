@@ -743,6 +743,27 @@ describe('fallbacks and warnings (each issued once)', () => {
     expect(warn).toHaveBeenCalledTimes(101);
   });
 
+  it('a value clamped by decimals or percent scaling warns once, naming the safe maximum', async () => {
+    const make = await freshFormat();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // in range, or clamped by the 1.x MAX_SAFE_INTEGER rule only: silent
+    expect(rest(make({ decimals: 10 }), 900719.92).text).toBe('900719.9200000000');
+    expect(rest(make({}), 1e300).text).toBe(String(MAX_SAFE));
+    expect(rest(make({ locale: 'en-US' }), 1e300).text).toBe('9,007,199,254,740,991');
+    expect(warn).not.toHaveBeenCalled();
+    const f = make({ decimals: 10 });
+    expect(rest(f, 1e6).text).toBe('900719.9254740991');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('900719.9254740991');
+    rest(f, -5e6);
+    rest(make({ decimals: 10, prefixText: '$' }), 2e6);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const p = make({ locale: 'en-US', format: { style: 'percent' } });
+    expect(rest(p, 1e14).text).toMatch(/^9,007,199,254,740,99\d%$/);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(String(warn.mock.calls[1][0])).toContain('±90071992547409.9,');
+  });
+
   it('an Intl construction error falls back to the plain path, warning once', async () => {
     const make = await freshFormat();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -231,7 +231,12 @@ function newFormatter(o: NormalizedOptions): Formatter {
 
   const quantize = (value: number): number => {
     const v = Number.isFinite(value) ? value : 0;
-    const x = Math.min(Math.abs(v), MAX_SAFE / (scale * pow));
+    const lim = MAX_SAFE / (scale * pow);
+    // Beyond `lim`, A would not be a safe integer: clamped (silently only by the 1.x MAX_SAFE_INTEGER rule).
+    if (Math.abs(v) > lim && lim < MAX_SAFE) {
+      warnOnce('max:' + lim, `${v} was clamped to ±${lim}, the largest value shown exactly with ${f} decimals${scale > 1 ? ' as a percentage' : ''}.`);
+    }
+    const x = Math.min(Math.abs(v), lim);
     let A: number;
     if (nfq) {
       // Digits of the latn twin (same rounding as the display); native-digit parts are not parseable (§7.3).
