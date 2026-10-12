@@ -354,6 +354,28 @@ describe('ensureStyles: <style> fallback', () => {
     expect(fallbackStyles(view.document)).toHaveLength(1);
   });
 
+  it('re-inserts the <style> after it was removed (a shadow root re-rendered with innerHTML, a head rewrite)', () => {
+    const view = freshWindow();
+    stubSheetConstructor(view);
+    const root = shadowIn(view);
+    ensureStyles(hostIn(view, root), true);
+    const [style] = fallbackStyles(root);
+    root.innerHTML = '<p>re-rendered</p>';
+    expect(fallbackStyles(root)).toHaveLength(0);
+    ensureStyles(hostIn(view, root), true);
+    expect(fallbackStyles(root)).toEqual([style]);
+    expect(root.firstChild).toBe(style);
+
+    ensureStyles(hostIn(view), true);
+    const [docStyle] = fallbackStyles(view.document);
+    docStyle.remove();
+    ensureStyles(hostIn(view), true);
+    expect(fallbackStyles(view.document)).toEqual([docStyle]);
+    expect(view.document.head.firstChild).toBe(docStyle);
+    ensureStyles(hostIn(view), true);
+    expect(fallbackStyles(view.document)).toHaveLength(1);
+  });
+
   it('never writes markup: the rules are set as textContent', () => {
     const view = freshWindow();
     stubSheetConstructor(view);
@@ -428,6 +450,26 @@ describe('opt-outs and configuration', () => {
     } finally {
       slotHolder[CONFIG_KEY] = saved;
     }
+  });
+
+  // An ESM copy next to a CJS or IIFE copy (or two bundles) must not inject twice.
+  it('shares the per-Document sheet and the <style> fallback with another copy of the module', async () => {
+    const view = freshWindow();
+    vi.resetModules();
+    const copy = await import('../src/styles');
+    expect(copy.ensureStyles).not.toBe(ensureStyles);
+    ensureStyles(hostIn(view), true);
+    copy.ensureStyles(hostIn(view), true);
+    const root = shadowIn(view);
+    copy.ensureStyles(hostIn(view, root), true);
+    expect(view.document.adoptedStyleSheets).toHaveLength(1);
+    expect(root.adoptedStyleSheets).toEqual(view.document.adoptedStyleSheets);
+
+    const other = freshWindow();
+    stubSheetConstructor(other);
+    copy.ensureStyles(hostIn(other), true);
+    ensureStyles(hostIn(other), true);
+    expect(fallbackStyles(other.document)).toHaveLength(1);
   });
 
   it('creates the slot lazily with the defaults', () => {

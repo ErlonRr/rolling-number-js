@@ -17,18 +17,23 @@
 import RULES from './css/rules.css?inline';
 import type { RollingNumberConfig } from './types';
 
-/** Global slot shared by the ESM and CJS copies of the package. */
-const CONFIG_KEY = Symbol.for('rolling-number.config');
+/**
+ * A value shared by every copy of the package loaded in this realm (ESM, CJS,
+ * the IIFE, two bundles), kept in `globalThis[Symbol.for('rolling-number.' + name)]`
+ * and created on first access.
+ * @internal
+ */
+export function slot<T>(name: string, make: () => T): T {
+  const g = globalThis as unknown as Record<symbol, T | undefined>;
+  const key = Symbol.for('rolling-number.' + name);
+  let value = g[key];
+  if (value === undefined) g[key] = value = make();
+  return value;
+}
 
 /** The live global configuration (created on first access). @internal */
 export function getConfig(): Required<RollingNumberConfig> {
-  const g = globalThis as unknown as Record<symbol, Required<RollingNumberConfig> | undefined>;
-  let config = g[CONFIG_KEY];
-  if (!config) {
-    config = { injectStyles: true, nonce: null };
-    g[CONFIG_KEY] = config;
-  }
-  return config;
+  return slot('config', () => ({ injectStyles: true, nonce: null }));
 }
 
 /**
@@ -61,10 +66,10 @@ interface StyleView {
   CSSLayerBlockRule?: unknown;
 }
 
-/** Constructed sheet per Document; `null` = constructable stylesheets are unavailable there. */
-const sheets = new WeakMap<Document, CSSStyleSheet | null>();
-/** Roots that already received the `<style data-rn-style>` fallback. */
-const styledRoots = new WeakSet<StyleRoot>();
+/** Constructed sheet per Document (`null` = constructable stylesheets are unavailable there), shared by every copy. */
+const sheets = (): WeakMap<Document, CSSStyleSheet | null> => slot('sheets', () => new WeakMap());
+/** The `<style data-rn-style>` fallback of each root, shared by every copy. */
+const styleEls = (): WeakMap<StyleRoot, HTMLStyleElement> => slot('styles', () => new WeakMap());
 
 /** Realm-safe check for a Document or a ShadowRoot (a DocumentFragment with a host). */
 function isStyleRoot(node: Node | null | undefined): node is StyleRoot {
@@ -78,7 +83,8 @@ function sheetText(view: StyleView): string {
 
 /** The Document's shared sheet, created on first use; `null` without constructable stylesheets. */
 function sheetFor(doc: Document, view: StyleView): CSSStyleSheet | null {
-  let sheet = sheets.get(doc);
+  const map = sheets();
+  let sheet = map.get(doc);
   if (sheet !== undefined) return sheet;
   sheet = null;
   try {
@@ -94,7 +100,7 @@ function sheetFor(doc: Document, view: StyleView): CSSStyleSheet | null {
     // Old engines expose CSSStyleSheet without a constructor ("Illegal constructor").
     sheet = null;
   }
-  sheets.set(doc, sheet);
+  map.set(doc, sheet);
   return sheet;
 }
 
@@ -111,19 +117,27 @@ function adopt(root: StyleRoot, sheet: CSSStyleSheet): boolean {
   }
 }
 
-/** Fallback without constructable stylesheets: one `<style data-rn-style>` per root, first child of `<head>` or of the ShadowRoot. */
+/**
+ * Fallback without constructable stylesheets: one `<style data-rn-style>` per
+ * root, first child of `<head>` or of the ShadowRoot. Put back when it was
+ * removed (a shadow root re-rendered with `innerHTML`, a rewritten head).
+ */
 function appendStyleElement(root: StyleRoot, doc: Document, view: StyleView): void {
-  if (styledRoots.has(root)) return;
   try {
     const parent: Node | null = root.nodeType === 9 ? (root as Document).head : root;
     if (!parent) return; // no <head> yet: retried on the next call
-    const style = doc.createElement('style');
-    style.setAttribute('data-rn-style', '');
-    const nonce = getConfig().nonce;
-    if (nonce) style.setAttribute('nonce', nonce);
-    style.textContent = sheetText(view);
+    const map = styleEls();
+    let style = map.get(root);
+    if (style && style.parentNode === parent) return;
+    if (!style) {
+      style = doc.createElement('style');
+      style.setAttribute('data-rn-style', '');
+      const nonce = getConfig().nonce;
+      if (nonce) style.setAttribute('nonce', nonce);
+      style.textContent = sheetText(view);
+      map.set(root, style);
+    }
     parent.insertBefore(style, parent.firstChild);
-    styledRoots.add(root);
   } catch {
     // Never throw from injection.
   }
