@@ -1,6 +1,8 @@
 // Generates VS Code custom data from dist/custom-elements.json (run by `pnpm run cem`):
 //   - dist/vscode.html-custom-data.json: tags and attributes for HTML completion/hover
-//     ("html.customData" setting);
+//     ("html.customData" setting). Value sets come from the string literals of each
+//     `@attr` type (`mode`, `trigger`, `live`, `interpolate`, `inject-styles` and the
+//     easing names); `@attr {boolean}` attributes (`no-interpolate`) are void;
 //   - dist/vscode.css-custom-data.json: the --rn-* custom properties for CSS completion/hover
 //     ("css.customData" setting).
 // Schemas: https://github.com/microsoft/vscode-html-languageservice/blob/main/docs/customData.md
@@ -16,11 +18,17 @@ const manifest = JSON.parse(readFileSync(join(dist, 'custom-elements.json'), 'ut
 
 const references = [{ name: 'Documentation', url: pkg.homepage }];
 
-/** `"a" | "b"` → ['a', 'b']; any other type text → [] (free-form value). */
+/**
+ * String literals of a type text, suggested as values: `"a" | "b"` → ['a', 'b'];
+ * `"a" | string` → ['a'] (other values stay allowed); no literal → [] (free-form value).
+ */
 function literalValues(typeText) {
   if (!typeText) return [];
-  const parts = typeText.split('|').map((t) => t.trim());
-  return parts.every((p) => /^(['"]).*\1$/.test(p)) ? parts.map((p) => p.slice(1, -1)) : [];
+  return typeText
+    .split('|')
+    .map((t) => t.trim())
+    .filter((p) => /^(['"]).*\1$/.test(p))
+    .map((p) => p.slice(1, -1));
 }
 
 function markdown(...lines) {
@@ -53,7 +61,8 @@ const tags = elements.map((el) => ({
         attr.type?.text && `Type: \`${attr.type.text}\``,
         attr.default !== undefined && `Default: \`${attr.default}\``
       ),
-      ...(values.length ? { values: values.map((name) => ({ name })) } : {})
+      ...(values.length ? { values: values.map((name) => ({ name })) } : {}),
+      ...(attr.type?.text === 'boolean' ? { valueSet: 'v' } : {})
     };
   }),
   references

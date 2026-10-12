@@ -5,7 +5,10 @@
 //   - the tag is registered dynamically by defineRollingNumber(), so the
 //     `custom-element-definition` exports are added explicitly;
 //   - the SSR-safe base class alias (HTMLElementBase) is the global HTMLElement;
-//   - attributes are linked to the properties that reflect them;
+//   - attributes are linked to the properties that reflect them (kebab-case
+//     attributes such as prefix-text ↔ prefixText; no-interpolate has no
+//     property); the build fails when an attribute or a public property is
+//     left unlinked;
 //   - module paths point at the published entry points instead of src/.
 
 const TAG = 'rolling-number';
@@ -13,6 +16,14 @@ const CLASS = 'RollingNumberElement';
 const SOURCE = 'src/element.ts';
 /** Public entry points that export the element class and register the tag on import. */
 const ENTRIES = ['dist/rolling-number.js', 'dist/register.js'];
+/** Attributes whose property has another name (`null`: attribute without a property). Others share the name. */
+const ATTRIBUTE_FIELDS = {
+  'prefix-text': 'prefixText',
+  'suffix-text': 'suffixText',
+  'overflow-suffix': 'overflowSuffix',
+  'inject-styles': 'injectStyles',
+  'no-interpolate': null
+};
 
 /** @returns {import('@custom-elements-manifest/analyzer').Plugin} */
 function rollingNumberManifest() {
@@ -26,14 +37,19 @@ function rollingNumberManifest() {
 
       element.superclass = { name: 'HTMLElement', package: 'global:' };
 
+      const publicFields = (element.members ?? []).filter((m) => m.kind === 'field' && !m.static && !m.privacy);
       for (const attr of element.attributes ?? []) {
-        const field = (element.members ?? []).find((m) => m.kind === 'field' && m.name === attr.name);
-        if (!field) continue;
+        const fieldName = Object.hasOwn(ATTRIBUTE_FIELDS, attr.name) ? ATTRIBUTE_FIELDS[attr.name] : attr.name;
+        if (fieldName === null) continue;
+        const field = publicFields.find((m) => m.name === fieldName);
+        if (!field) throw new Error(`cem: attribute ${attr.name} has no property ${fieldName}`);
         attr.fieldName = field.name;
         if (field.default !== undefined && field.default !== 'null' && attr.default === undefined) attr.default = field.default;
         field.attribute = attr.name;
         field.reflects = true;
       }
+      const unlinked = publicFields.filter((f) => !f.attribute).map((f) => f.name);
+      if (unlinked.length) throw new Error(`cem: properties without an @attr: ${unlinked.join(', ')}`);
 
       const [main, register] = ENTRIES;
       const definition = (module) => ({
