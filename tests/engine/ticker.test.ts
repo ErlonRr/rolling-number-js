@@ -270,6 +270,48 @@ describe('ticker (j): global window and test stubs', () => {
     expect(raf2.pending()).toBe(0);
   });
 
+  it('zone.js: frames are requested and cancelled in Zone.root (outside Angular change detection)', () => {
+    let depth = 0;
+    vi.stubGlobal('Zone', {
+      root: {
+        run<T>(fn: () => T): T {
+          depth++;
+          try {
+            return fn();
+          } finally {
+            depth--;
+          }
+        }
+      }
+    });
+    const fv = createFakeView();
+    const view = fv.view as unknown as {
+      requestAnimationFrame(cb: FrameRequestCallback): number;
+      cancelAnimationFrame(id: number): void;
+    };
+    const calls: string[] = [];
+    const raf = view.requestAnimationFrame;
+    const caf = view.cancelAnimationFrame;
+    view.requestAnimationFrame = (cb) => (calls.push(`raf:${depth > 0}`), raf.call(view, cb));
+    view.cancelAnimationFrame = (id) => (calls.push(`caf:${depth > 0}`), caf.call(view, id));
+    const a = recordingTickable('A', fv.log, 3);
+    schedule(fv.view, a);
+    fv.frame(0); // the loop requests its next frame
+    cancel(fv.view, a);
+    expect(calls).toEqual(['raf:true', 'raf:true', 'caf:true']);
+    expect(a.writes).toBe(1);
+  });
+
+  it('zone.js stand-ins without a usable Zone.root.run are ignored', () => {
+    for (const zone of [{}, { root: null }, { root: { run: 1 } }]) {
+      vi.stubGlobal('Zone', zone);
+      const fv = createFakeView();
+      const a = recordingTickable('A', fv.log, 2);
+      schedule(fv.view, a);
+      expect(fv.runAll(0)).toBe(2);
+    }
+  });
+
   it('falls back to setTimeout when the view has no requestAnimationFrame', () => {
     const timers: Array<() => void> = [];
     const view = {

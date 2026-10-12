@@ -23,7 +23,7 @@ import {
 import { createFormatter, resolveLabel } from './format';
 import { plan as makePlan, retargetCurve, sample } from './engine/odometer';
 import { resolveTiming } from './engine/timing';
-import { cancel, schedule } from './engine/ticker';
+import { cancel, outsideZone, schedule } from './engine/ticker';
 import { createColumnsRenderer } from './renderers/columns';
 import { createTextRenderer, resolveMode } from './renderers/text';
 import { ensureStyles } from './styles';
@@ -378,10 +378,14 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
       : { durationCss: cs.getPropertyValue('--rn-duration'), easingCss: cs.getPropertyValue('--rn-easing'), fromCustomProperties: true };
   };
 
-  /** Watchdog: finishes a motion whose frames never come (background tab, `display:none` iframe). */
+  /**
+   * Watchdog: finishes a motion whose frames never come (background tab,
+   * `display:none` iframe). Armed outside Angular's zone like the frames; the
+   * delay is capped at the 32-bit timer limit (a longer one fires at once).
+   */
   const arm = (D: number): void => {
     disarm();
-    if (view) dog = view.setTimeout(() => self.finish(), D + 1000) as unknown as number;
+    if (view) dog = outsideZone(() => view.setTimeout(() => self.finish(), Math.min(D + 1000, 0x7fffffff)));
   };
 
   const disarm = (): void => {

@@ -505,6 +505,52 @@ describe('watchdog (§8.2 step 7)', () => {
       vi.useRealTimers();
     }
   });
+
+  it('a huge duration never overflows the 32-bit timer delay (no immediate finish)', () => {
+    const delays: number[] = [];
+    const real = window.setTimeout.bind(window);
+    vi.spyOn(window, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      delays.push(ms ?? 0);
+      return real(fn, 0x7fffffff);
+    }) as typeof window.setTimeout);
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    void core.setValue(100, { duration: 3e9 });
+    raf.frame(0);
+    expect(delays.length).toBeGreaterThan(0);
+    for (const ms of delays) expect(ms).toBeLessThanOrEqual(0x7fffffff);
+    expect(core.isAnimating()).toBe(true);
+  });
+
+  it('zone.js: the watchdog timer is armed in Zone.root', () => {
+    let depth = 0;
+    vi.stubGlobal('Zone', {
+      root: {
+        run<T>(fn: () => T): T {
+          depth++;
+          try {
+            return fn();
+          } finally {
+            depth--;
+          }
+        }
+      }
+    });
+    const inRoot: boolean[] = [];
+    const real = window.setTimeout.bind(window);
+    vi.spyOn(window, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      inRoot.push(depth > 0);
+      return real(fn, ms);
+    }) as typeof window.setTimeout);
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    void core.setValue(100);
+    raf.frame(0);
+    expect(inRoot.length).toBeGreaterThan(0);
+    expect(inRoot.every(Boolean)).toBe(true);
+    raf.runAll(16);
+    expect(core.isAnimating()).toBe(false);
+  });
 });
 
 describe('trigger: "visible" and the from intro (§8.3)', () => {

@@ -69,6 +69,17 @@ function nowOf(view: Window): number {
   return perf && typeof perf.now === 'function' ? perf.now() : Date.now();
 }
 
+/**
+ * Runs `fn` in zone.js's root zone when zone.js is loaded, so frames never
+ * run in (and trigger change detection of) the Angular zone of whichever
+ * counter started the loop. No zone.js types: everything is guarded.
+ */
+export function outsideZone<T>(fn: () => T): T {
+  const zone = (globalThis as { Zone?: { root?: { run?: unknown } | null } }).Zone;
+  const root = zone && zone.root;
+  return root && typeof root.run === 'function' ? (root.run as (f: () => T) => T).call(root, fn) : fn();
+}
+
 /** Requests a frame unless one is pending with the current rAF implementation. */
 function request(loop: Loop): void {
   const view = loop.view;
@@ -79,13 +90,12 @@ function request(loop: Loop): void {
   loop.req = raf;
   const cb = (now: number): void => runFrame(loop, token, now);
   try {
-    if (raf) {
-      loop.id = raf.call(view, cb);
-    } else {
+    loop.id = outsideZone(() => {
+      if (raf) return raf.call(view, cb);
       // No rAF (the core treats such changes as instant; this only keeps a stray schedule alive).
       const tick = (): void => cb(nowOf(view));
-      loop.id = (typeof view.setTimeout === 'function' ? view.setTimeout(tick, 16) : setTimeout(tick, 16)) as unknown as number;
-    }
+      return (typeof view.setTimeout === 'function' ? view.setTimeout(tick, 16) : setTimeout(tick, 16)) as unknown as number;
+    });
   } catch (err) {
     // Leave no dead pending frame behind: the next schedule() retries.
     loop.token = null;
@@ -103,14 +113,16 @@ function cancelPending(loop: Loop): void {
   loop.req = null;
   loop.id = 0;
   try {
-    if (viaRaf) {
-      const caf = (view as { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
-      if (typeof caf === 'function') (caf as (id: number) => void).call(view, id);
-    } else if (typeof view.clearTimeout === 'function') {
-      view.clearTimeout(id);
-    } else {
-      clearTimeout(id);
-    }
+    outsideZone(() => {
+      if (viaRaf) {
+        const caf = (view as { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
+        if (typeof caf === 'function') (caf as (id: number) => void).call(view, id);
+      } else if (typeof view.clearTimeout === 'function') {
+        view.clearTimeout(id);
+      } else {
+        clearTimeout(id);
+      }
+    });
   } catch {
     // The stale frame is ignored anyway (token check).
   }
