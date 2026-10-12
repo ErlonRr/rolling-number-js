@@ -669,6 +669,18 @@ describe('createFormatter cache and key', () => {
     expect(fmt({ pad: 2 }).key).not.toBe(fmt().key);
   });
 
+  it('an undefined format field is absent; null is a value (different cache keys)', () => {
+    const nul = fmt({ locale: 'en-US', format: { useGrouping: null as unknown as boolean } });
+    expect(rest(nul, 1234567).text).toBe('1234567'); // Intl: null → false
+    const undef = fmt({ locale: 'en-US', format: { useGrouping: undefined } });
+    expect(undef).not.toBe(nul);
+    expect(rest(undef, 1234567).text).toBe('1,234,567');
+    expect(undef).toBe(fmt({ locale: 'en-US', format: {} }));
+    // values keep their type in the key: "true" (a string Intl rejects) is not true
+    const str = fmt({ locale: 'de-DE', format: { useGrouping: 'false' as unknown as boolean } });
+    expect(fmt({ locale: 'de-DE', format: { useGrouping: false } })).not.toBe(str);
+  });
+
   it('is bounded (least recently used evicted)', () => {
     const first = fmt({ suffixText: 'lru-0' });
     for (let i = 1; i <= 40; i++) fmt({ suffixText: `lru-${i}` });

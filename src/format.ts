@@ -445,7 +445,10 @@ export function createFormatter(o: NormalizedOptions): Formatter {
   let key: string | null = null;
   try {
     const fmt = (o.format || {}) as unknown as NFOptions;
-    key = JSON.stringify([o.locale, !!o.format, Object.keys(fmt).sort().map((k) => [k, fmt[k]]), o.decimals, o.pad, o.prefixText, o.suffixText, o.overflowSuffix]);
+    // `undefined` fields are absent (newFormatter skips them); the others keep their type ("true" is not true,
+    // null is not undefined) and their string form (what Intl reads).
+    const fields = Object.keys(fmt).sort().filter((k) => fmt[k] !== undefined).map((k) => [k, typeof fmt[k], String(fmt[k])]);
+    key = JSON.stringify([o.locale, !!o.format, fields, o.decimals, o.pad, o.prefixText, o.suffixText, o.overflowSuffix]);
   } catch {
     // not serializable: not cached
   }
