@@ -152,22 +152,42 @@ function expectClean(host: Element): void {
   expect(host.querySelectorAll('[data-rn-lead]').length).toBe(0);
 }
 
-/** Stubs layout reads: boxes of `.rn-col` / tokens and Range widths over token text. */
-function stubGeometry(opts: { col?: number; perChar?: number } = {}) {
+/**
+ * Stubs layout reads: boxes of `.rn-col` / tokens and Range widths over token text.
+ * `scale`: screen px per layout px (an ancestor `transform: scale()` or `zoom`): client
+ * rects are multiplied by it. `computed`: `getComputedStyle().width` reports the layout
+ * width (as browsers do); without it the computed width is left to happy-dom.
+ * `hidden`: the host is `display: none` (every box and Range measures 0, computed width `auto`).
+ */
+function stubGeometry(opts: { col?: number; perChar?: number; scale?: number; computed?: boolean } = {}) {
   const col = opts.col ?? 20;
   const perChar = opts.perChar ?? 10;
-  const boxes: Element[] = [];
+  const geo = { hidden: false, boxes: [] as Element[] };
+  const k = opts.scale ?? 1;
   const rects = (width: number) => ({ x: 0, y: 0, top: 0, left: 0, bottom: 0, right: width, width, height: 0, toJSON() {} }) as DOMRect;
+  /** Layout width of an owned box. */
+  const layoutW = (el: Element): number => {
+    if (geo.hidden || el.hasAttribute('data-rn-in')) return 0;
+    if (el.classList.contains('rn-col')) return col;
+    return (el.textContent ?? '').length * perChar + 1;
+  };
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-    boxes.push(this);
-    if (this.hasAttribute('data-rn-in')) return rects(0);
-    if (this.classList.contains('rn-col')) return rects(col);
-    return rects((this.textContent ?? '').length * perChar + 1);
+    geo.boxes.push(this);
+    return rects(layoutW(this) * k);
   });
   vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (this: Range) {
-    return rects((this.startContainer.textContent ?? '').length * perChar);
+    return rects(geo.hidden ? 0 : (this.startContainer.textContent ?? '').length * perChar * k);
   });
-  return { boxes };
+  if (opts.computed) {
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+      const style = real(el, pseudo);
+      if (!(el as HTMLElement).hasAttribute('data-rn-key')) return style;
+      const width = geo.hidden ? 'auto' : layoutW(el) + 'px';
+      return new Proxy(style, { get: (t, p) => (p === 'width' ? width : Reflect.get(t, p)) });
+    });
+  }
+  return geo;
 }
 
 // ── tests ─────────────────────────────────────────────────────────────
@@ -402,6 +422,36 @@ describe('columns renderer: measure()', () => {
     expect(inOf(suf)).toBe('0.7500');
     expect(wOf(sign)).toBe('11px');
     expect(inOf(sign)).toBe('0.4000');
+  });
+
+  // Client rects include ancestor transforms and `zoom`; --rn-w is a layout width.
+  it.each([
+    ['transform: scale(2)', 2],
+    ['transform: scale(0.5)', 0.5],
+    ['zoom: 2', 2]
+  ])('measures layout px under %s (entering column, Range over entering text)', (_, scale) => {
+    stubGeometry({ col: 20, perChar: 10, scale, computed: true });
+    const o = { suffix: ' kg' };
+    const { r, host } = setup(restOf(99));
+    r.begin(motionOf(layoutOf(shapeOf(99)), layoutOf(shapeOf(-100, o), o)), 'count', restOf(-100, o));
+    r.measure();
+    r.frame(frameOf(3, { q: 0.5, pos: [0, 0, 0], inn: [1, 1, 0.5], lead: [0, 0, 1], sigma: 0.5 }));
+    expect(wOf(key(host, 'i2'))).toBe('20px');
+    expect(wOf(key(host, 'sign'))).toBe('10px');
+    expect(wOf(key(host, 'suf'))).toBe('30px');
+  });
+
+  it.each([2, 0.5])('measures a leaving token in layout px under scale(%s)', (scale) => {
+    stubGeometry({ perChar: 10, scale, computed: true });
+    const o = { suffix: ' pts' };
+    const { r, host } = setup(restOf(-5, o));
+    const suf = key(host, 'suf');
+    const sign = key(host, 'sign');
+    r.begin(motionOf(layoutOf(shapeOf(-5, o), o), layoutOf(shapeOf(5))), 'count', restOf(5));
+    r.measure();
+    r.frame(frameOf(1, { q: 0.25, pos: [3], sigma: 0.4 }));
+    expect(wOf(suf)).toBe('41px');
+    expect(wOf(sign)).toBe('11px');
   });
 
   it('without a measure, collapsed nodes keep the 0px fallback (no --rn-w)', () => {

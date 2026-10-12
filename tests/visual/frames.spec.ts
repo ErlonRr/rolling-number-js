@@ -472,6 +472,24 @@ test.describe('roll path (interpolate: false, §5.7)', () => {
 });
 
 test.describe('geometry while moving', () => {
+  // Client rects include transforms and zoom; --rn-w must be a layout width, or the
+  // entering nodes grow past (scale > 1) or short of (scale < 1) their final width.
+  for (const style of ['transform: scale(2); transform-origin: 0 0', 'transform: scale(0.5); transform-origin: 0 0', 'zoom: 2']) {
+    test(`entering nodes grow to their layout width under ${style}`, async ({ page }) => {
+      await openStage(page);
+      const host = await addCounter(page, 'n', { value: 5, suffixText: ' kg' }, { style });
+      await setValue(host, -1000, false);
+      const widths: number[] = [];
+      await runMotion(page, host, {
+        onFrame: async () => void widths.push(await host.evaluate((el) => (el as HTMLElement).offsetWidth))
+      });
+      const final = widths[widths.length - 1];
+      expect(isMonotone(widths, 1, 1)).toBe(true);
+      expect(Math.max(...widths)).toBeLessThanOrEqual(final + 1);
+      expect(widths[widths.length - 2]).toBeGreaterThanOrEqual(final - 2);
+    });
+  }
+
   test('the window shows the cell given by the inline transform, including the wrap cell', async ({ page }) => {
     await openStage(page);
     const host = await addCounter(page, 'n', { value: 19 });

@@ -352,12 +352,19 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
   const mayCollapse = (node: SignNode | StaticNode): boolean =>
     node.collapsed || node.presence !== 'both' || node.tie !== null || node.kind === 'sign' || node.role === 'overflow';
 
+  /** Screen width of a Range over `el`'s text (includes ancestor transforms and zoom). */
   const rangeWidth = (el: Element): number | null => {
     const range = typeof doc.createRange === 'function' ? doc.createRange() : null;
     if (!range || typeof range.getBoundingClientRect !== 'function') return null;
     range.selectNodeContents(el);
     const w = range.getBoundingClientRect().width;
     return Number.isFinite(w) ? w : null;
+  };
+
+  /** Layout width (CSS px, before transforms and zoom) from the computed style; NaN when unavailable (`auto`). */
+  const cssWidth = (el: Element): number => {
+    const view = doc.defaultView;
+    return view ? parseFloat(view.getComputedStyle(el).width) : NaN;
   };
 
   const signNode = (): SignNode | undefined => {
@@ -539,12 +546,19 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
       if (destroyed) return;
       // Every column has the same width (inline-grid: widest of sizer and cells),
       // so any column that is not collapsed is the reference for entering ones.
+      // --rn-w is a layout width, while client rects (boxes and Ranges) include
+      // ancestor transforms and zoom: the reference column gives the scale k
+      // (screen px per layout px) that converts the Range widths.
       let w: number | null = null;
+      let k = 1;
       let fallback: ColumnNode | null = null;
       for (const node of seq) {
         if (node.kind !== 'digit') continue;
         if (!node.collapsed) {
-          w = node.el.getBoundingClientRect().width;
+          const box = node.el.getBoundingClientRect().width;
+          const css = cssWidth(node.el);
+          w = css >= 0 ? css : box;
+          if (box > 0 && css > 0) k = box / css;
           break;
         }
         if (!fallback) fallback = node;
@@ -555,7 +569,12 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
         if (node.kind === 'digit' || !mayCollapse(node)) continue;
         // A collapsed box measures 0: use a Range over its text, which keeps the
         // glyph width (§14.2). A leaving node measures its own box first.
-        node.w = node.collapsed ? rangeWidth(node.el) : node.el.getBoundingClientRect().width;
+        const css = node.collapsed ? NaN : cssWidth(node.el);
+        if (css >= 0) node.w = css;
+        else {
+          const screen = node.collapsed ? rangeWidth(node.el) : node.el.getBoundingClientRect().width;
+          node.w = screen === null ? null : screen / k;
+        }
       }
     },
 
