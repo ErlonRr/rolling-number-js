@@ -177,6 +177,7 @@ describe('RollingNumberCore: rendering', () => {
     const host = makeHost();
     const core = create(host, { value: -3 });
     core.setValue(3, false);
+    raf.runAll(); // R-settle: the sign fades and is removed at rest (S3)
     expect(displayOf(host)).toBe('3');
     expect(host.querySelector('.rn-sign')).toBeNull();
   });
@@ -187,11 +188,13 @@ describe('RollingNumberCore: rendering', () => {
     expect(displayOf(host)).toBe('-2');
     expect(host.getAttribute('aria-label')).toBe('-2');
     core.setValue(1.5, false);
-    expect(displayOf(host)).toBe('2');
     expect(host.getAttribute('aria-label')).toBe('2');
+    raf.runAll();
+    expect(displayOf(host)).toBe('2');
     core.setValue(-0.4, false);
-    expect(displayOf(host)).toBe('0');
     expect(host.getAttribute('aria-label')).toBe('0');
+    raf.runAll();
+    expect(displayOf(host)).toBe('0');
   });
 
   it('normalizes loose values: NaN, "abc", Infinity → 0; 1e21 → MAX_SAFE_INTEGER (no exponent)', () => {
@@ -199,13 +202,17 @@ describe('RollingNumberCore: rendering', () => {
     const core = create(host, { value: NaN });
     expect(digitsOf(host)).toBe('0');
     core.setValue(loose('abc'), false);
+    raf.runAll();
     expect(digitsOf(host)).toBe('0');
     core.setValue(Infinity, false);
+    raf.runAll();
     expect(digitsOf(host)).toBe('0');
     core.setValue(1e21, false);
+    raf.runAll();
     expect(digitsOf(host)).toBe(MAX_SAFE);
     expect(host.getAttribute('aria-label')).toBe(MAX_SAFE);
     core.setValue(loose('12'), false);
+    raf.runAll(); // R-settle: the leaving columns of MAX_SAFE linger until rest
     expect(digitsOf(host)).toBe('12');
     expect(core.getValue()).toBe(12);
   });
@@ -264,16 +271,35 @@ describe('RollingNumberCore: rendering', () => {
   it('removes extra columns from the end when the number gets shorter', () => {
     const host = makeHost();
     const core = create(host, { value: 1000 });
-    const first = host.querySelector('.rn-col');
+    // R-key: the units column is kept (B18), the leftmost ones leave.
+    const units = host.querySelector('[data-rn-key="i0"]');
     core.setValue(5, false);
+    raf.runAll();
     expect(digitsOf(host)).toBe('5');
-    expect(host.querySelector('.rn-col')).toBe(first);
+    expect(host.querySelector('[data-rn-key="i0"]')).toBe(units);
   });
 
-  it('setValue(v, false) updates synchronously without requesting frames', () => {
+  it('setValue(v, false) rolls (S3)', () => {
     const host = makeHost();
     const core = create(host, { value: 1 });
     core.setValue(250, false);
+    // The roll requests a frame; surviving columns show the target digit synchronously.
+    expect(raf.requested()).toBe(1);
+    expect(host.querySelector('[data-rn-key="i0"]')!.getAttribute('data-digit')).toBe('0');
+    expect(core.getValue()).toBe(250);
+    expect(core.isAnimating()).toBe(true);
+    expect(host.getAttribute('data-rn-state')).toBe('animating');
+    raf.runAll();
+    expect(digitsOf(host)).toBe('250');
+    expect(core.isAnimating()).toBe(false);
+    expect(host.hasAttribute('data-rn-state')).toBe(false);
+    expect(host.classList.contains('rn-interpolating')).toBe(false);
+  });
+
+  it('setValue(v, { motion: "none" }) updates synchronously without requesting frames', () => {
+    const host = makeHost();
+    const core = create(host, { value: 1 });
+    core.setValue(250, { motion: 'none' });
     expect(digitsOf(host)).toBe('250');
     expect(raf.requested()).toBe(0);
     expect(core.getValue()).toBe(250);
@@ -298,8 +324,18 @@ describe('RollingNumberCore: rendering', () => {
     const host = makeHost();
     const core = create(host, { value: 1 });
     core.update({ value: 50, interpolate: false });
+    // A roll: the target digits synchronously, no intermediate values.
     expect(digitsOf(host)).toBe('50');
-    expect(raf.requested()).toBe(0);
+    expect(raf.requested()).toBe(1);
+    const seen = new Set<string>();
+    let t = 0;
+    while (raf.pending()) {
+      raf.frame(t);
+      seen.add(digitsOf(host));
+      t += 16;
+    }
+    expect([...seen]).toEqual(['50']);
+    expect(core.isAnimating()).toBe(false);
   });
 
   it('render() re-adds the root class after a framework clobbers className', () => {
@@ -350,9 +386,9 @@ describe('RollingNumberCore: interpolation', () => {
     expect(raf.pending()).toBe(1);
 
     raf.frame(1000); // first frame: start time
-    expect(digitsOf(host)).toBe('0');
+    expect(core.getDisplayValue()).toBe(0); // R-display: entering columns are in the DOM, collapsed
     raf.frame(1200); // halfway in time, easeOutCubic → 87.5
-    const mid = Number(digitsOf(host));
+    const mid = core.getDisplayValue(); // R-display (S6)
     expect(mid).toBeGreaterThan(0);
     expect(mid).toBeLessThan(100);
     expect(core.isAnimating()).toBe(true);
@@ -371,10 +407,11 @@ describe('RollingNumberCore: interpolation', () => {
     let t = 0;
     while (raf.pending()) {
       raf.frame(t);
-      seen.push(Number(digitsOf(host)));
+      seen.push(core.getDisplayValue()); // R-display (S6)
       t += 16;
     }
     expect(seen.at(-1)).toBe(1000);
+    expect(digitsOf(host)).toBe('1000');
     for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
   });
 
@@ -445,20 +482,21 @@ describe('RollingNumberCore: interpolation', () => {
     core.setValue(100);
     raf.frame(0);
     raf.frame(200);
-    const onScreen = Number(digitsOf(host));
+    const onScreen = core.getDisplayValue(); // R-display (S6)
     expect(onScreen).toBeGreaterThan(0);
     expect(onScreen).toBeLessThan(100);
 
     const cancelledBefore = raf.cancelled();
     core.setValue(0);
-    expect(raf.cancelled()).toBe(cancelledBefore + 1);
+    // R-ticker: a retarget keeps the pending frame.
+    expect(raf.cancelled()).toBe(cancelledBefore);
     expect(raf.pending()).toBe(1);
     expect(host.getAttribute('aria-label')).toBe('0');
 
     raf.frame(1000); // start of the new animation: still showing the interrupted value
-    expect(Number(digitsOf(host))).toBe(onScreen);
+    expect(core.getDisplayValue()).toBe(onScreen);
     raf.frame(1100);
-    expect(Number(digitsOf(host))).toBeLessThanOrEqual(onScreen);
+    expect(core.getDisplayValue()).toBeLessThanOrEqual(onScreen);
     raf.frame(1400);
     expect(digitsOf(host)).toBe('0');
     expect(core.isAnimating()).toBe(false);
@@ -471,7 +509,24 @@ describe('RollingNumberCore: interpolation', () => {
     core.setValue(100);
     raf.frame(0);
     raf.frame(100);
+    // Now a roll retarget (S3): the units column shows the target synchronously.
     core.setValue(7, false);
+    expect(raf.pending()).toBe(1);
+    expect(host.querySelector('[data-rn-key="i0"]')!.getAttribute('data-digit')).toBe('7');
+    raf.runAll(116);
+    expect(digitsOf(host)).toBe('7');
+    expect(core.isAnimating()).toBe(false);
+    expect(host.hasAttribute('data-rn-state')).toBe(false);
+    expect(host.classList.contains('rn-interpolating')).toBe(false);
+  });
+
+  it('a { motion: "none" } setValue during an animation cancels it and clears the state', () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    core.setValue(100);
+    raf.frame(0);
+    raf.frame(100);
+    core.setValue(7, { motion: 'none' });
     expect(raf.pending()).toBe(0);
     expect(digitsOf(host)).toBe('7');
     expect(core.isAnimating()).toBe(false);
@@ -485,7 +540,7 @@ describe('RollingNumberCore: interpolation', () => {
     core.setValue(100);
     raf.frame(1000);
     raf.frame(900); // negative elapsed time
-    expect(digitsOf(host)).toBe('0');
+    expect(core.getDisplayValue()).toBe(0); // R-display (entering columns are in the DOM, collapsed)
     raf.frame(1400);
     expect(digitsOf(host)).toBe('100');
     expect(core.isAnimating()).toBe(false);
@@ -503,19 +558,27 @@ describe('RollingNumberCore: interpolation', () => {
     raf.frame(1000);
     expect(core.isAnimating()).toBe(false);
 
-    core.setDuration(-50); // → 0: no interpolation
+    core.setDuration(-50); // → 0: no counting, the change rolls (S3)
     core.setValue(5);
-    expect(raf.pending()).toBe(0);
+    expect(raf.pending()).toBe(1);
+    raf.runAll(2000);
     expect(digitsOf(host)).toBe('5');
+    expect(core.isAnimating()).toBe(false);
   });
 
   it('constructor duration: negative → 0, no interpolation (as in v1.2.1)', () => {
     const host = makeHost();
     const core = create(host, { value: 0, duration: -1 });
     core.setValue(100);
-    expect(raf.pending()).toBe(0);
-    expect(core.isAnimating()).toBe(false);
+    // A roll: target digits synchronously, never an intermediate value.
     expect(digitsOf(host)).toBe('100');
+    expect(raf.pending()).toBe(1);
+    let t = 0;
+    while (raf.pending()) {
+      raf.frame((t += 16));
+      expect(digitsOf(host)).toBe('100');
+    }
+    expect(core.isAnimating()).toBe(false);
   });
 
   it('constructor duration: NaN → 400', () => {
@@ -537,9 +600,10 @@ describe('RollingNumberCore: interpolation', () => {
     updated.update({ duration: -5 });
     created.setValue(7);
     updated.setValue(7);
-    expect(raf.pending()).toBe(0);
+    raf.runAll();
     expect(digitsOf(a)).toBe('7');
     expect(digitsOf(b)).toBe('7');
+    expect(a.innerHTML).toBe(b.innerHTML);
   });
 
   it('setInterpolate(null) and update({ interpolate: null }) fall back to the default (true)', () => {
@@ -565,24 +629,31 @@ describe('RollingNumberCore: interpolation', () => {
   it('setInterpolate(false) and the string "false" disable interpolation', () => {
     const host = makeHost();
     const core = create(host, { value: 0 });
+    // Roll semantics (S3): the target digits synchronously, settled by the ticker.
     core.setInterpolate(false);
     core.setValue(10);
-    expect(raf.pending()).toBe(0);
+    expect(digitsOf(host)).toBe('10');
+    raf.runAll();
     expect(digitsOf(host)).toBe('10');
 
     core.setInterpolate(true);
     core.setInterpolate(loose('false'));
     core.setValue(20);
-    expect(raf.pending()).toBe(0);
     expect(digitsOf(host)).toBe('20');
+    raf.runAll();
 
     core.setInterpolate(true);
     core.setValue(30);
     expect(raf.pending()).toBe(1);
+    raf.frame(0);
+    raf.frame(100);
+    expect(digitsOf(host)).not.toBe('30'); // counting
     // An explicit animate argument wins over the option.
     core.setValue(40, false);
-    expect(raf.pending()).toBe(0);
     expect(digitsOf(host)).toBe('40');
+    raf.runAll(116);
+    expect(digitsOf(host)).toBe('40');
+    expect(core.isAnimating()).toBe(false);
   });
 
   it('skips the interpolation when the user prefers reduced motion', () => {
@@ -777,20 +848,31 @@ describe('RollingNumberCore: host handling', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('warns once per unsupported host (<input>, <textarea>, SVG) but still does not throw', () => {
+  it('warns once per unsupported host (<input type=checkbox>, SVG) but still does not throw', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const input = makeHost('input');
-    create(input, { value: 42 });
+    // Text-like controls get text mode (1.3), without a warning.
+    const text = makeHost('input');
+    create(text, { value: 42 });
+    expect((text as HTMLInputElement).value).toBe('42');
+    create(makeHost('textarea'), { value: 1 });
+    expect(warn).not.toHaveBeenCalled();
+
+    const checkbox = makeHost('input');
+    checkbox.setAttribute('type', 'checkbox');
+    create(checkbox, { value: 42 });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('<input>');
-    create(input, { value: 43 }); // same host again: no second warning
+    create(checkbox, { value: 43 }); // same host again: no second warning
     expect(warn).toHaveBeenCalledTimes(1);
 
-    create(makeHost('textarea'), { value: 1 });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    document.body.appendChild(svg);
+    create(loose(svg), { value: 1 });
     expect(warn).toHaveBeenCalledTimes(2);
+    expect(String(warn.mock.calls[1][0])).toContain('<svg>');
 
     const svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    document.body.appendChild(svgGroup);
+    svg.appendChild(svgGroup);
     create(loose(svgGroup), { value: 1 });
     expect(warn).toHaveBeenCalledTimes(3);
   });
