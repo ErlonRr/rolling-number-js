@@ -187,6 +187,37 @@ describe('resolveOptions (constructor semantics)', () => {
     expect(resolveOptions(loose(getterThrows)).pad).toBe(1);
   });
 
+  it('never throws when a normalizer meets a hostile value (getter, proxy trap): that field gets its default', () => {
+    const format = {
+      style: 'currency',
+      get currency(): string {
+        throw new Error('boom');
+      }
+    };
+    const keysTrap = new Proxy({}, {
+      ownKeys() {
+        throw new Error('boom');
+      }
+    });
+    const getTrap = new Proxy(['en'], {
+      get() {
+        throw new Error('boom');
+      }
+    });
+    const { proxy: revoked, revoke } = Proxy.revocable([], {});
+    revoke();
+    let o: NormalizedOptions | undefined;
+    expect(() => (o = resolveOptions(loose({ format, locale: revoked, pad: 3, value: 7 })))).not.toThrow();
+    expect(o).toMatchObject({ format: null, locale: null, pad: 3, value: 7 });
+    expect(resolveOptions(loose({ format: keysTrap })).format).toBeNull();
+    expect(resolveOptions(loose({ locale: getTrap })).locale).toBeNull();
+    expect(resolveOptions(loose({ format: revoked })).format).toBeNull();
+    // update semantics: the default too
+    const current: NormalizedOptions = { ...RN_DEFAULTS_13, format: Object.freeze({ style: 'percent' }), locale: Object.freeze(['de']) };
+    expect(normalizeField('format', keysTrap, current)).toBeNull();
+    expect(normalizeField('locale', getTrap, current)).toBeNull();
+  });
+
   it('warns once for an invalid format JSON string', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(normalizeFormat('[object Object]')).toBeNull();

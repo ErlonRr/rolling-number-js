@@ -266,9 +266,21 @@ const NORMALIZERS: Normalizers = {
 };
 
 /**
+ * `NORMALIZERS[key](raw)`, or the default when normalizing throws: a hostile
+ * value (a throwing getter in `format`, a proxy trap, a revoked proxy).
+ */
+function normalize<K extends OptionKey>(key: K, raw: unknown): NormalizedOptions[K] {
+  try {
+    return NORMALIZERS[key](raw);
+  } catch {
+    return RN_DEFAULTS_13[key];
+  }
+}
+
+/**
  * Constructor semantics: every field of `o` is normalized; `undefined` and
  * `null` give the default; a non-finite `duration` is unset (`null`).
- * Never throws (hostile getters and values are tolerated).
+ * Never throws (hostile getters and values give the default).
  */
 export function resolveOptions(o: RollingNumberUpdate | null | undefined): NormalizedOptions {
   const src = (o !== null && typeof o === 'object' ? o : {}) as Record<string, unknown>;
@@ -276,19 +288,19 @@ export function resolveOptions(o: RollingNumberUpdate | null | undefined): Norma
   for (const key of OPTION_KEYS) {
     const raw = readOption(src, key);
     if (raw === undefined || raw === null) continue;
-    (out as Record<OptionKey, unknown>)[key] = NORMALIZERS[key](raw);
+    (out as Record<OptionKey, unknown>)[key] = normalize(key, raw);
   }
   return out;
 }
 
 /**
  * `update()` semantics for one field: `undefined` → `current[key]` (unchanged),
- * `null` → the default, otherwise normalized. A non-finite `duration` keeps
- * the current value (1.x `setDuration`).
+ * `null` → the default, otherwise normalized (a hostile value → the default).
+ * A non-finite `duration` keeps the current value (1.x `setDuration`).
  */
 export function normalizeField<K extends OptionKey>(key: K, raw: unknown, current: NormalizedOptions): NormalizedOptions[K] {
   if (raw === undefined) return current[key];
   if (raw === null) return RN_DEFAULTS_13[key];
   if (key === 'duration' && !Number.isFinite(toNumber(raw))) return current[key];
-  return NORMALIZERS[key](raw);
+  return normalize(key, raw);
 }
