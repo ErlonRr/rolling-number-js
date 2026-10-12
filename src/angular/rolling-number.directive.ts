@@ -1,4 +1,5 @@
 import {
+  AfterViewChecked,
   AfterViewInit,
   Directive,
   DoCheck,
@@ -133,7 +134,7 @@ function observed(emitter: EventEmitter<RollingNumberEvent>): boolean {
   exportAs: 'rollingNumber',
   standalone: true
 })
-export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges, DoCheck, OnDestroy {
+export class RollingNumberDirective implements OnInit, AfterViewInit, AfterViewChecked, OnChanges, DoCheck, OnDestroy {
   /** Normalized options; `null` = unset/auto where the core allows it (S5: duration/easing). */
   private readonly o: NormalizedOptions = { ...RN_DEFAULTS_13 };
   private _target = 'auto';
@@ -399,7 +400,9 @@ export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges,
    * Where the counter renders: `'auto'` (the host, or an inner span for
    * `*-input` hosts), `'host'`, or a CSS selector resolved inside the host
    * after the view is initialized (`rnTarget="input"`). Changing it
-   * re-creates the counter. `null`/`''` → `'auto'`.
+   * re-creates the counter once the view is checked, so a selector can match
+   * nodes that `*ngIf`/`@if` render in the same change detection.
+   * `null`/`''` → `'auto'` (switching between them keeps the counter).
    * @default 'auto'
    */
   @Input()
@@ -423,6 +426,8 @@ export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges,
   private createdTarget: HTMLElement | null = null;
   /** A creation was attempted (ngOnInit, ngAfterViewInit or afterNextRender). */
   private created = false;
+  /** Normalized `rnTarget` of the last creation: a different value re-creates the core. */
+  private createdFor = 'auto';
   /** Pending `afterNextRender` creation. */
   private renderRef: { destroy(): void } | null = null;
   private readonly zone = inject(NgZone);
@@ -498,21 +503,27 @@ export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges,
     if (this.isBrowser && !this.created && this.selectorTarget()) this.create();
   }
 
-  /** Forwards changed inputs to the core; a changed `rnTarget` re-creates it. */
+  /** Forwards changed inputs to the core (a changed `rnTarget` re-creates it in `ngAfterViewChecked`). */
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['rnTarget'] && this.created) {
-      this.teardown();
-      this.create();
-      return;
-    }
     const core = this._core;
-    if (!core) return;
+    if (!core || this._target !== this.createdFor) return;
     const update: Record<string, unknown> = {};
     for (const name in changes) {
       const key = optionKey(name);
       if (key) update[key] = this.o[key];
     }
     this.zone.runOutsideAngular(() => core.update(update as RollingNumberUpdate));
+  }
+
+  /**
+   * Re-creates the core when `rnTarget` changed, once the embedded views of
+   * this check (`*ngIf`, `@if`) are rendered, so a new selector can match them.
+   */
+  ngAfterViewChecked(): void {
+    if (this.created && this._target !== this.createdFor) {
+      this.teardown();
+      this.create();
+    }
   }
 
   /** Puts the library class back when a `[className]` binding on the host replaced the whole class. */
@@ -538,6 +549,7 @@ export class RollingNumberDirective implements OnInit, AfterViewInit, OnChanges,
     // `from` is an intro: a re-created counter (new rnTarget) shows the value directly.
     const options: RollingNumberUpdate = { ...this.o, from: this.created ? null : this.o.from };
     this.created = true;
+    this.createdFor = this._target;
     this.zone.runOutsideAngular(() => {
       const target = this.resolveTarget(this.el.nativeElement);
       if (!target) return;

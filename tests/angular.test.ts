@@ -528,7 +528,9 @@ describe('RollingNumberDirective (lifecycle, no TestBed)', () => {
       await expect(dir.setValue(3)).resolves.toEqual({ value: 3, completed: false });
       dir.rnTarget = '[[invalid';
       expect(() => dir.ngOnChanges(changes('rnTarget'))).not.toThrow();
+      expect(() => dir.ngAfterViewChecked()).not.toThrow();
       expect(dir.core).toBeNull();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('[[invalid'));
       dir.ngOnDestroy();
     });
 
@@ -544,6 +546,8 @@ describe('RollingNumberDirective (lifecycle, no TestBed)', () => {
 
       dir.rnTarget = 'input';
       dir.ngOnChanges(changes('rnTarget'));
+      expect(dir.core).toBe(first); // re-created once the view is checked (embedded views included)
+      dir.ngAfterViewChecked();
       const second = dir.core!;
       expect(second).not.toBe(first);
       expect(second.getHost()).toBe(input);
@@ -553,6 +557,7 @@ describe('RollingNumberDirective (lifecycle, no TestBed)', () => {
 
       dir.rnTarget = 'host';
       dir.ngOnChanges(changes('rnTarget'));
+      dir.ngAfterViewChecked();
       expect(dir.core!.getHost()).toBe(host);
       expect(digitsOf(host)).toBe('5'); // shows the value at once: no 0 → 5 intro
       expect(input.classList.contains('rn-rolling-number')).toBe(false);
@@ -812,9 +817,10 @@ describe('RollingNumberDirective in a template (JIT)', () => {
   } as unknown as Renderer2;
 
   let refs: ComponentRef<unknown>[] = [];
+  let raf: RafController;
 
   beforeEach(() => {
-    installRaf();
+    raf = installRaf();
     stubReducedMotion(false);
     anr.impl = 'real';
     // esbuild emits no `design:paramtypes`: tell the JIT compiler what the constructor injects.
@@ -874,5 +880,48 @@ describe('RollingNumberDirective in a template (JIT)', () => {
     detect();
     expect(render).toHaveBeenCalledTimes(1); // the span only
     expect(root.querySelector('input')!.className).toBe('b');
+  });
+
+  it('an rnTarget change is resolved after the embedded views of the same check (*ngIf)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { root, state, detect } = mountTemplate(
+      '<span [rollingNumber]="n" [rnTarget]="sel"><b *ngIf="show" class="b"></b><i class="i"></i></span>',
+      { n: 5, sel: null as string | null, show: false }
+    );
+    const span = root.querySelector('span')!;
+    expect(digitsOf(span)).toBe('5');
+
+    state.show = true;
+    state.sel = '.b';
+    detect();
+    const b = span.querySelector('b')!;
+    expect(warn).not.toHaveBeenCalled();
+    expect(digitsOf(b)).toBe('5');
+    expect(b.getAttribute('role')).toBe('img');
+    expect(span.hasAttribute('role')).toBe(false);
+    expect(span.querySelector(':scope > .rn-col')).toBeNull();
+
+    // Inputs changed in the same check reach the new counter.
+    state.sel = '.i';
+    state.n = 7;
+    detect();
+    raf.runAll();
+    expect(digitsOf(span.querySelector('i')!)).toBe('7');
+    expect(b.childNodes).toHaveLength(0);
+  });
+
+  it('rnTarget changes between values that all mean auto (null, "", "auto") keep the counter', () => {
+    const { root, state, detect } = mountTemplate('<span [rollingNumber]="n" [rnTarget]="sel"></span>', {
+      n: 5,
+      sel: null as string | null
+    });
+    const span = root.querySelector('span')!;
+    const destroy = vi.spyOn(RollingNumberCore.prototype, 'destroy');
+    for (const sel of ['', 'auto', null]) {
+      state.sel = sel;
+      detect();
+    }
+    expect(destroy).not.toHaveBeenCalled();
+    expect(digitsOf(span)).toBe('5');
   });
 });
