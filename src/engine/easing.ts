@@ -103,22 +103,21 @@ function stepsFn(n: number, position: 'start' | 'end' | 'none' | 'both'): Easing
   };
 }
 
+/** `<step-position>` keywords of `steps()`. */
+const STEP_POSITIONS: Record<string, 'start' | 'end' | 'none' | 'both'> = {
+  'jump-start': 'start', start: 'start', 'jump-end': 'end', end: 'end', 'jump-none': 'none', 'jump-both': 'both'
+};
+
 function parseSteps(args: string): EasingFn | null {
   const parts = args.split(',');
-  if (parts.length < 1 || parts.length > 2) return null;
+  if (parts.length > 2) return null;
   const count = parts[0].trim();
   if (!INT_RE.test(count)) return null;
   const n = Number(count);
   if (!(n >= 1) || !Number.isSafeInteger(n)) return null;
   const kw = parts.length === 2 ? parts[1].trim() : 'jump-end';
-  let position: 'start' | 'end' | 'none' | 'both';
-  switch (kw) {
-    case 'jump-start': case 'start': position = 'start'; break;
-    case 'jump-end': case 'end': position = 'end'; break;
-    case 'jump-none': position = 'none'; break;
-    case 'jump-both': position = 'both'; break;
-    default: return null;
-  }
+  if (!hasOwn(STEP_POSITIONS, kw)) return null;
+  const position = STEP_POSITIONS[kw];
   if (position === 'none' && n < 2) return null;
   return stepsFn(n, position);
 }
@@ -146,7 +145,7 @@ function parseLinear(args: string): EasingFn | null {
   let largest = -Infinity;
   for (let i = 0; i < stops.length; i++) {
     const tokens = stops[i].trim().split(/\s+/);
-    if (tokens.length < 1 || tokens.length > 3 || tokens[0] === '') return null;
+    if (tokens.length > 3 || tokens[0] === '') return null;
     let output: number | null = null;
     let outputAt = -1;
     const pcts: number[] = [];
@@ -166,26 +165,15 @@ function parseLinear(args: string): EasingFn | null {
     if (output === null) return null;
     // `<number> && <percentage>{1,2}`: the percentages are adjacent, so the number is first or last.
     if (tokens.length === 3 && outputAt === 1) return null;
-    if (pcts.length > 0) {
-      const a = Math.max(pcts[0], largest);
-      xs.push(a);
-      ys.push(output);
-      largest = a;
-      if (pcts.length === 2) {
-        const b = Math.max(pcts[1], largest);
-        xs.push(b);
+    // Inputs: the stop's percentages, else 0 for the first stop and 1 for the last; each one is
+    // at least the largest input so far. Other stops get an implicit (interpolated) input.
+    const inputs = pcts.length > 0 ? pcts : i === 0 ? [0] : i === stops.length - 1 ? [1] : null;
+    if (inputs) {
+      for (const x of inputs) {
+        largest = Math.max(x, largest);
+        xs.push(largest);
         ys.push(output);
-        largest = b;
       }
-    } else if (i === 0) {
-      xs.push(0);
-      ys.push(output);
-      largest = 0;
-    } else if (i === stops.length - 1) {
-      const b = Math.max(1, largest);
-      xs.push(b);
-      ys.push(output);
-      largest = b;
     } else {
       xs.push(null);
       ys.push(output);
