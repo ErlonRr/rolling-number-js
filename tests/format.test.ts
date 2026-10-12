@@ -731,6 +731,18 @@ describe('fallbacks and warnings (each issued once)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it('distinct warnings are capped (e.g. Accept-Language locales on a server): 100, then one notice', async () => {
+    const make = await freshFormat();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (let i = 0; i < 1000; i++) make({ locale: `xx-$$${i}` });
+    expect(warn).toHaveBeenCalledTimes(101);
+    expect(String(warn.mock.calls[99][0])).toContain('"xx-$$99"');
+    expect(String(warn.mock.calls[100][0])).toMatch(/further .*warnings .*suppressed/i);
+    // nothing else is warned (or remembered) afterwards
+    make({ locale: 'en-US', format: { notation: 'compact' } as unknown as RollingNumberUpdate['format'] });
+    expect(warn).toHaveBeenCalledTimes(101);
+  });
+
   it('an Intl construction error falls back to the plain path, warning once', async () => {
     const make = await freshFormat();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

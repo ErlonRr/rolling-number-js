@@ -40,12 +40,14 @@ const SIDES = ['pre', 'post'] as const;
 // ── helpers ───────────────────────────────────────────────────────────
 
 const warned = new Set<string>();
+/** Distinct warnings issued before the rest are suppressed (ids can come from user input, e.g. Accept-Language). */
+const MAX_WARNED = 100;
 
-/** `console.warn` once per `id` for the lifetime of the module. */
+/** `console.warn` once per `id` for the lifetime of the module; past {@link MAX_WARNED} ids, one notice and silence. */
 function warnOnce(id: string, message: string): void {
-  if (warned.has(id)) return;
+  if (warned.has(id) || warned.size > MAX_WARNED) return;
   warned.add(id);
-  warn(message);
+  warn(warned.size > MAX_WARNED ? 'Further formatting warnings are suppressed.' : message);
 }
 
 /**
