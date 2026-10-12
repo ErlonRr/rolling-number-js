@@ -498,6 +498,47 @@ describe('text renderer: focus', () => {
     expect(el.value).toBe('<1>');
   });
 
+  it('a user edit made while focused mid-motion wins, even when the control is blurred before the motion ends', () => {
+    const el = input('text');
+    const fmt = fakeFormatter();
+    const r = create(el, fmt);
+    r.mount(rs(fmt, 0), false);
+    r.begin({ tokens: [] }, 'count', rs(fmt, 1000));
+    r.frame(fs(100));
+    expect(el.value).toBe('<100>');
+    el.focus();
+    r.frame(fs(200));
+    el.value = '42';
+    el.blur();
+    r.frame(fs(300));
+    r.frame(fs(400));
+    expect(el.value).toBe('42');
+    r.rest(rs(fmt, 1000));
+    expect(el.value).toBe('42');
+    // The next motion writes again.
+    r.begin({ tokens: [] }, 'count', rs(fmt, 5));
+    r.frame(fs(3));
+    expect(el.value).toBe('<3>');
+    r.rest(rs(fmt, 5));
+    expect(el.value).toBe('<5>');
+  });
+
+  it('focus without an edit mid-motion: the frames resume after blur and the final text is written', () => {
+    const el = input('text');
+    const fmt = fakeFormatter();
+    const r = create(el, fmt);
+    r.mount(rs(fmt, 0), false);
+    r.begin({ tokens: [] }, 'count', rs(fmt, 1000));
+    r.frame(fs(100));
+    el.focus();
+    r.frame(fs(200));
+    el.blur();
+    r.frame(fs(300));
+    expect(el.value).toBe('<300>');
+    r.rest(rs(fmt, 1000));
+    expect(el.value).toBe('<1000>');
+  });
+
   it('rest() on a focused control writes nothing and writes the final text on blur', () => {
     const el = input('text');
     const fmt = fakeFormatter();

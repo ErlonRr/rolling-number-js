@@ -121,6 +121,10 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
   let deferred: string | null = null;
   let armed = false;
   let dead = false;
+  /** Frames of the current motion were skipped on a focused control. */
+  let skipped = false;
+  /** A user edit was found after such a skip: nothing is written until the next motion. */
+  let yielded = false;
 
   /** `input[type=number]`: read per write, so a runtime `type` change is honored. */
   const numeric = (): boolean => target === 'input' && inputType(host) === 'number';
@@ -210,7 +214,9 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
 
   const rest = (r: RestState): void => {
     if (dead) return;
-    write(numeric() ? r.numericText : r.text);
+    // The motion ended after yielding to a user edit: its final write is skipped too.
+    if (yielded) yielded = false;
+    else write(numeric() ? r.numericText : r.text);
   };
 
   return {
@@ -235,11 +241,25 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
     },
     begin(motion: MotionLayout, kind: 'count' | 'roll', t: RestState): void {
       void motion; void kind; void t;
+      skipped = yielded = false;
     },
     measure(): void {},
     frame(fs: FrameState): void {
       // Writes skip a focused control (decision 19); the final rest() defers to blur.
-      if (dead || focused()) return;
+      if (dead || yielded) return;
+      if (focused()) {
+        skipped = true;
+        return;
+      }
+      // Back from a focus mid-motion: a value other than the last one written
+      // is a user edit, which wins for the rest of this motion.
+      if (skipped) {
+        skipped = false;
+        if (read() !== last) {
+          yielded = true;
+          return;
+        }
+      }
       const a = roundDisplay(fs.A);
       disarm();
       put(numeric() ? format.numericText(a) : format.text(a, fs.ovf >= 0.5));
