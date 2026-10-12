@@ -151,10 +151,7 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
 
   // ── nodes ─────────────────────────────────────────────────────────────
 
-  const unwatch = (): void => {
-    watcher?.disconnect();
-    watcher = null;
-  };
+  const unwatch = (): void => watcher?.disconnect();
 
   /**
    * Hides a direct `[data-rn-ssr]` child (restored on destroy) and keeps the
@@ -384,12 +381,6 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
     return Number.isFinite(w) ? w : null;
   };
 
-  /** Layout width (CSS px, before transforms and zoom) from the computed style; NaN when unavailable (`auto`). */
-  const cssWidth = (el: Element): number => {
-    const view = doc.defaultView;
-    return view ? parseFloat(view.getComputedStyle(el).width) : NaN;
-  };
-
   const signNode = (): SignNode | undefined => {
     const sign = byKey.get('sign');
     return sign && sign.kind === 'sign' ? sign : undefined;
@@ -590,8 +581,9 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
       for (const node of seq) {
         if (node.kind !== 'digit') continue;
         if (!node.collapsed) {
+          // The computed width is the layout width; `auto` (no stylesheet) → NaN → the box.
           const box = node.el.getBoundingClientRect().width;
-          const css = cssWidth(node.el);
+          const css = doc.defaultView ? parseFloat(doc.defaultView.getComputedStyle(node.el).width) : NaN;
           w = css >= 0 ? css : box;
           if (box > 0 && css > 0) k = box / css;
           break;
@@ -609,12 +601,8 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
         if (node.kind === 'digit' || !mayCollapse(node)) continue;
         // A collapsed box measures 0: use a Range over its text, which keeps the
         // glyph width (§14.2). A leaving node measures its own box first.
-        const css = node.collapsed ? NaN : cssWidth(node.el);
-        if (css >= 0) node.w = css;
-        else {
-          const screen = node.collapsed ? rangeWidth(node.el) : node.el.getBoundingClientRect().width;
-          node.w = screen === null ? null : screen / k;
-        }
+        const screen = node.collapsed ? rangeWidth(node.el) : node.el.getBoundingClientRect().width;
+        node.w = screen === null ? null : screen / k;
       }
     },
 

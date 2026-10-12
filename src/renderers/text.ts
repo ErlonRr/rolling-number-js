@@ -285,7 +285,6 @@ export function createTextRenderer(host: Element, doc: Document, fmt: Formatter)
       }
       saved = null;
       fallback?.removeAttribute('hidden');
-      fallback = null;
     }
   };
 }
