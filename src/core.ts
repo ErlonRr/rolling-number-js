@@ -254,7 +254,9 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
   const tick: Tickable = {
     read: (now) => {
       const r = renderer;
-      if (plan || !r) return;
+      if (!r) return;
+      // Widths of a host that was hidden at the first frame are measured once it shows (O(1) once measured).
+      if (plan) return r.measure();
       // A retarget continues from the last written frame (its first frame advances, §5.6).
       t0 = tw ?? now;
       const t = resolveTiming(opts, call, probe, false, true);

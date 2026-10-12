@@ -549,6 +549,9 @@ Details: [`CHANGELOG.md`](./CHANGELOG.md).
 - The host itself gets the class `rn-rolling-number` (`display: inline-flex`), `role="img"` and an `aria-label`.
 - Moving a `<rolling-number>` element in the DOM rebuilds it at its final value.
 - Framework-controlled inputs (React controlled, `ngModel`, `v-model`) overwrite the animated text: use read-only or uncontrolled inputs.
+- `trigger: 'visible'` never fires for a host with `display: contents` (it has no box to observe).
+- TypeScript: a project that loads both the ESM and the CJS declarations (mixed `.mts` and `.cts` files importing the package) sees duplicate global declarations; use one module format per project. The CJS declarations of `rolling-number/angular` need TypeScript ≥ 5.8 or `skipLibCheck` (Angular is ESM-only).
+- `rolling-number/iife` is the `<script>` build: in a bundler import `rolling-number` instead.
 
 ---
 

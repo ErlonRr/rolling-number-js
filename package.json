@@ -59,7 +59,9 @@
         "default": "./dist/ssr.cjs"
       }
     },
-    "./iife": "./dist/rolling-number.iife.js",
+    "./iife": {
+      "import": "./dist/rolling-number.iife.js"
+    },
     "./angular": {
       "import": {
         "types": "./dist/angular/index.d.ts",
