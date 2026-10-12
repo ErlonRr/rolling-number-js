@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Ids such as `B15` or `I05` refer to the findings in [`docs/AUDIT.md`](./docs/AUDIT.md).
 
-## [Unreleased] — 1.3.0
+## [1.3.0] — 2026-10-12
 
 Minor release. Every 1.x option, default, export path, the `<rolling-number>` tag, the documented CSS classes and the CSS variables are kept. The visual changes listed under **Changed** fix audit bugs; the behavior changes S1–S6 are those of [`docs/design/v1.3.md`](./docs/design/v1.3.md) §0.
 
@@ -67,7 +67,9 @@ Minor release. Every 1.x option, default, export path, the `<rolling-number>` ta
 ### Deprecated
 - Nothing.
 
-## [1.2.2] — unreleased
+## [1.2.2] — not published separately
+
+These fixes were never released on their own: they ship in 1.3.0.
 
 Patch release: bug fixes only. Every public API, option name, default, export path, the `<rolling-number>` tag, the CSS class names and the `--rn-duration`/`--rn-easing` variables are unchanged.
 
