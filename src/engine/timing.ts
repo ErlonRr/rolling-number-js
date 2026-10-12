@@ -68,9 +68,10 @@ function userEasing(e: RollingNumberEasing | null | undefined): Easing | null {
  * Resolves the kind, duration, easing and instant flag of a change (§5.8):
  *
  * ```
- * flag    = typeof animate = 'boolean' ? animate : opts.interpolate
+ * flag    = animate = undefined ∨ animate is an object ? opts.interpolate : !!animate   // 1.2: null, 0, '' roll
  * kind    = call.motion ('count'|'roll') ?? (flag ? 'count' : 'roll')
- * kind    = 'roll' when kind = 'count' ∧ opts.duration = 0 ∧ no call.duration (1.x "0 = no counting")
+ * kind    = 'roll' when kind = 'count' ∧ opts.duration = 0 ∧ no call.duration ∧ call.motion ≠ 'count'
+ *           (1.x "0 = no counting" applies to the implicit kind; an explicit count is timed as if unset)
  * D       = call.duration ?? (opts.duration > 0 ? opts.duration : non-default CSS ?? (count 400 / roll 500))
  * E       = call.easing ?? opts.easing ?? non-default CSS ?? (count ease-out-cubic / roll odometer)
  * instant = motion 'none' ∨ D ≤ 0 ∨ reducedMotion ∨ !hasRaf
@@ -98,14 +99,15 @@ export function resolveTiming(
   hasRaf: boolean
 ): Timing {
   const call: RollingNumberSetValueOptions | null = animate !== null && typeof animate === 'object' ? animate : null;
-  const flag = typeof animate === 'boolean' ? animate : opts.interpolate;
+  // 1.2 counted unless `!animate`: only `undefined` (and an options object) follows the option.
+  const flag = animate === undefined || call ? opts.interpolate : !!animate;
   const motion = call ? call.motion : undefined;
   let kind: 'count' | 'roll' = motion === 'count' || motion === 'roll' ? motion : flag ? 'count' : 'roll';
 
   const rawCallD = call ? call.duration : undefined;
   const callD = typeof rawCallD === 'number' && Number.isFinite(rawCallD) ? rawCallD : undefined;
   let optD = opts.duration;
-  if (kind === 'count' && optD === 0 && callD === undefined) {
+  if (kind === 'count' && optD === 0 && callD === undefined && motion !== 'count') {
     kind = 'roll';
     optD = null;
   }

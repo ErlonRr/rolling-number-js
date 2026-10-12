@@ -244,3 +244,31 @@ describe('resolveTiming (m): kind table', () => {
     expect(run({}, { motion: 'roll', duration: 200 }, zero())).toMatchObject({ kind: 'roll', D: 200, instant: false });
   });
 });
+
+describe('resolveTiming: 1.x animate argument and explicit count', () => {
+  it('only undefined follows interpolate; null and other falsy non-objects roll, truthy ones count (1.2: !animate)', () => {
+    for (const interpolate of [true, false]) {
+      expect(run({ interpolate }, undefined).kind).toBe(interpolate ? 'count' : 'roll');
+      for (const falsy of [null, 0, '', Number.NaN]) {
+        expect(run({ interpolate }, loose<boolean>(falsy)).kind, String(falsy)).toBe('roll');
+      }
+      for (const truthy of [1, 'yes']) {
+        expect(run({ interpolate }, loose<boolean>(truthy)).kind, String(truthy)).toBe('count');
+      }
+      // objects are per-call options: without `motion` they follow interpolate
+      expect(run({ interpolate }, {}).kind).toBe(interpolate ? 'count' : 'roll');
+    }
+  });
+
+  it('an explicit { motion: "count" } counts even with the duration option 0 (count default duration)', () => {
+    expect(run({ duration: 0 }, { motion: 'count' })).toMatchObject({ kind: 'count', D: 400, instant: false });
+    expect(run({ duration: 0, interpolate: false }, { motion: 'count' })).toMatchObject({ kind: 'count', D: 400 });
+    // a call duration still wins; a non-default CSS duration times it like an unset option
+    expect(run({ duration: 0 }, { motion: 'count', duration: 250 })).toMatchObject({ kind: 'count', D: 250 });
+    expect(run({ duration: 0 }, { motion: 'count' }, probe('0.75s', DEFAULT_CSS_EASING))).toMatchObject({ kind: 'count', D: 750 });
+    same(run({ duration: 0 }, { motion: 'count' }).E.fn, PRESETS['ease-out-cubic']);
+    // the implicit kind keeps the 1.x rule
+    expect(run({ duration: 0 }, true)).toMatchObject({ kind: 'roll' });
+    expect(run({ duration: 0 }, {})).toMatchObject({ kind: 'roll' });
+  });
+});
