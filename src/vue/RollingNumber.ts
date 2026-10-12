@@ -58,7 +58,8 @@ export interface RollingNumberProps extends Omit<RollingNumberOptions, 'interpol
 
 /**
  * What a template ref to `<RollingNumber>` exposes (Vue ≥ 3.2): the current
- * props, the live core, the root element and the imperative methods.
+ * props, the live core, the root element and the imperative methods. A prop
+ * bound to `null` reads like an absent one (its default).
  *
  * On Vue 3.0/3.1 (no `expose`) the component's full public instance is
  * returned instead: the props stay readable, the methods are not available.
@@ -143,20 +144,18 @@ const BOOL = { type: Boolean, default: undefined };
 
 /** Runtime props: defaults and Boolean casting only (the types come from {@link RollingNumberProps}). */
 const props: Record<string, object> = { staticFallback: BOOL };
+/** Exposed value of an absent or `null` prop: the default, `undefined` for automatic ones, 400 for `duration`. */
+const EXPOSED_FALLBACK: Record<string, unknown> = {};
 for (const key of OPTION_KEYS) {
+  const fallback = (EXPOSED_FALLBACK[key] = UNSET.includes(key) ? undefined : RN_DEFAULTS_13[key]);
   props[key] =
     key === 'interpolate'
       ? { type: [Boolean, String], default: RN_DEFAULTS_13.interpolate }
       : key === 'injectStyles'
         ? BOOL
-        : { default: UNSET.includes(key) ? undefined : RN_DEFAULTS_13[key] };
+        : { default: fallback };
 }
-
-/** Exposed value of an absent prop whose public type is not optional. */
-const EXPOSED_FALLBACK: Record<string, unknown> = {
-  duration: RN_DEFAULTS.duration,
-  injectStyles: RN_DEFAULTS_13.injectStyles
-};
+EXPOSED_FALLBACK.duration = RN_DEFAULTS.duration;
 
 // Explicitly typed so the published declaration does not depend on the arity of
 // DefineComponent in the Vue version used to build the package (it differs
@@ -253,11 +252,7 @@ export const RollingNumber: DefineComponent<RollingNumberProps, RollingNumberExp
         Object.defineProperty(api, key, {
           enumerable: true,
           get: () =>
-            key === 'interpolate'
-              ? normalizeInterpolate(p.interpolate, RN_DEFAULTS_13.interpolate)
-              : p[key] === undefined && key in EXPOSED_FALLBACK
-                ? EXPOSED_FALLBACK[key]
-                : p[key]
+            key === 'interpolate' ? normalizeInterpolate(p.interpolate, RN_DEFAULTS_13.interpolate) : p[key] ?? EXPOSED_FALLBACK[key]
         });
       }
       expose(api);

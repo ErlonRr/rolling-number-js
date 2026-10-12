@@ -24,6 +24,7 @@ import {
 } from '../src/vue';
 import { RollingNumberCore, getResolved } from '../src/core';
 import { defineRollingNumber } from '../src/element';
+import { OPTION_KEYS } from '../src/options';
 import type { RollingNumberEvent, RollingNumberFormat } from '../src/types';
 import { digitsOf, installRaf, stubReducedMotion, type RafController } from './helpers';
 
@@ -315,6 +316,17 @@ describe('<RollingNumber> (Vue) v1.3 props and template ref', () => {
     mountApp(() => () => h(RollingNumber, { ref: counter }));
     const c = counter.value!;
     expect(exposedOptions(c)).toStrictEqual({
+      value: 0, pad: 1, max: null, interpolate: true, duration: 400, easing: undefined, decimals: undefined,
+      locale: undefined, format: undefined, prefixText: '', suffixText: '', overflowSuffix: '', mode: 'auto',
+      from: null, trigger: 'immediate', label: undefined, live: 'off', injectStyles: true
+    });
+  });
+
+  it('exposes props bound to null like absent ones (the exposed types are not nullable)', () => {
+    const counter = shallowRef<Exposed | null>(null);
+    const nulls = Object.fromEntries(OPTION_KEYS.map((key) => [key, null]));
+    mountApp(() => () => h(RollingNumber, { ref: counter, ...nulls }));
+    expect(exposedOptions(counter.value!)).toStrictEqual({
       value: 0, pad: 1, max: null, interpolate: true, duration: 400, easing: undefined, decimals: undefined,
       locale: undefined, format: undefined, prefixText: '', suffixText: '', overflowSuffix: '', mode: 'auto',
       from: null, trigger: 'immediate', label: undefined, live: 'off', injectStyles: true
