@@ -598,6 +598,26 @@ describe('v-rolling-number (Vue directive) v1.3', () => {
     expect(b.className).toBe('b');
   });
 
+  it('does not replay the `from` intro when the target changes', async () => {
+    const target = ref('.a');
+    mountApp(() => () =>
+      withDirectives(h('label', [h('b', { class: 'a' }), h('i', { class: 'b' })]), [
+        [vRollingNumber, { value: 5, from: 0, target: target.value }]
+      ])
+    );
+    const a = container.querySelector('b')!;
+    const b = container.querySelector('i')!;
+    expect(a.getAttribute('data-rn-state')).toBe('animating'); // the first creation plays the intro
+    raf.runAll();
+    expect(digitsOf(a)).toBe('5');
+
+    target.value = '.b';
+    await nextTick();
+    expect(digitsOf(b)).toBe('5');
+    expect(b.hasAttribute('data-rn-state')).toBe(false);
+    expect(raf.pending()).toBe(0);
+  });
+
   it('restores the library class on a target whose class Vue patches', async () => {
     const cls = ref('x');
     mountApp(() => () =>

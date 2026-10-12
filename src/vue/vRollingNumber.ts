@@ -64,11 +64,12 @@ function resolveHost(el: HTMLElement, binding: RollingNumberBinding | null | und
   return el;
 }
 
-function create(el: HTMLElement, host: HTMLElement, applied: Record<string, unknown>): void {
+/** Creates the core on `host`; `retarget`: a re-creation on a new target, which never replays the `from` intro. */
+function create(el: HTMLElement, host: HTMLElement, applied: Record<string, unknown>, retarget?: boolean): void {
   // A server-rendered host (getSSRProps) that ends up in text mode: the core
   // never owns role/aria-label there, so drop the server's columns markers.
   const ssr = host.hasAttribute('data-rn-ssr');
-  const core = new RollingNumberCore(host, applied as RollingNumberUpdate);
+  const core = new RollingNumberCore(host, (retarget ? { ...applied, from: null } : applied) as RollingNumberUpdate);
   if (ssr && core.getMode() === 'text') {
     for (const name of ['role', 'aria-label', 'data-rn-ssr']) host.removeAttribute(name);
   }
@@ -81,7 +82,7 @@ function applyBinding(el: HTMLElement, state: DirectiveState, binding: RollingNu
   if (host !== state.core.getHost()) {
     // The target moved (new selector/element, or the matched node was replaced).
     state.core.destroy();
-    create(el, host, Object.assign(state.applied, next));
+    create(el, host, Object.assign(state.applied, next), true);
     return;
   }
   let changed: Record<string, unknown> | null = null;
