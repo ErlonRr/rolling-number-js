@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
-import { createFormatter, resolveLabel } from '../src/format';
+import { createBaseFormatter, createFormatter, resolveLabel } from '../src/format';
 import { resolveOptions } from '../src/options';
 import type { DisplayState, Formatter, MotionLayout, NumberLayout, Token } from '../src/internal/contracts';
 import type { RollingNumberUpdate } from '../src/types';
@@ -679,6 +679,20 @@ describe('createFormatter cache and key', () => {
     // values keep their type in the key: "true" (a string Intl rejects) is not true
     const str = fmt({ locale: 'de-DE', format: { useGrouping: 'false' as unknown as boolean } });
     expect(fmt({ locale: 'de-DE', format: { useGrouping: false } })).not.toBe(str);
+  });
+
+  it('the SSR base formatter is the cached instance; createFormatter adds the motion members', () => {
+    const o = resolveOptions({ locale: 'en-US', suffixText: ' base-shared' });
+    const base = createBaseFormatter(o);
+    expect(base.motionLayout).toBeUndefined();
+    const full = createFormatter(o);
+    expect(full).toBe(base);
+    expect(createBaseFormatter(o)).toBe(full);
+    const shape = full.shapeOf(1234, Infinity);
+    expect(msig(full.motionLayout(full.shapeOf(5, Infinity), shape))).toBe('i3+ g3+[p3] i2+ i1+ i0 suf');
+    expect(full.shapeOfDisplay({ pos: [5], inn: [1], sigma: 0, ovf: 0, reel: [false] })).toEqual({
+      intDigits: 1, negative: false, overflow: false, zero: false
+    });
   });
 
   it('is bounded (least recently used evicted)', () => {

@@ -17,7 +17,7 @@
  * @module
  */
 import type {
-  DisplayState, Formatter, LayoutShape, MotionToken, NormalizedOptions, NumberLayout, Tie, Token, TokenRole
+  DisplayState, Formatter, LayoutShape, MotionLayout, MotionToken, NormalizedOptions, NumberLayout, Tie, Token, TokenRole
 } from './internal/contracts';
 import { warn } from './internal/warn';
 
@@ -47,7 +47,7 @@ const MAX_WARNED = 100;
 function warnOnce(id: string, message: string): void {
   if (warned.has(id) || warned.size > MAX_WARNED) return;
   warned.add(id);
-  warn(warned.size > MAX_WARNED ? 'Further formatting warnings are suppressed.' : message);
+  warn(warned.size > MAX_WARNED ? 'Further warnings suppressed.' : message);
 }
 
 /**
@@ -129,7 +129,7 @@ function validLocales(list: readonly string[] | null): string[] | undefined {
 
 // ── formatter ─────────────────────────────────────────────────────────
 
-function newFormatter(o: NormalizedOptions): Formatter {
+function newFormatter(o: NormalizedOptions): BaseFormatter {
   const { pad, prefixText: prefix, suffixText: suffix, overflowSuffix: ovfText } = o;
   const padCore = Math.min(pad, INTL_MAX_INT);
   let f = o.decimals ?? 0;
@@ -234,7 +234,7 @@ function newFormatter(o: NormalizedOptions): Formatter {
     const lim = MAX_SAFE / (scale * pow);
     // Beyond `lim`, A would not be a safe integer: clamped (silently only by the 1.x MAX_SAFE_INTEGER rule).
     if (Math.abs(v) > lim && lim < MAX_SAFE) {
-      warnOnce('max:' + lim, `${v} was clamped to ±${lim}, the largest value shown exactly with ${f} decimals${scale > 1 ? ' as a percentage' : ''}.`);
+      warnOnce('max:' + lim, `${v} clamped to ±${lim}, the largest value shown exactly with this format.`);
     }
     const x = Math.min(Math.abs(v), lim);
     let A: number;
@@ -323,24 +323,15 @@ function newFormatter(o: NormalizedOptions): Formatter {
 
   const layout = (shape: LayoutShape): NumberLayout => {
     const s = norm(shape);
+    // Plural-dependent names ("1 day", "5 days", ru "21 день"): a shape from shapeOf is built from the number it
+    // shows (M, only stored with `pr`), any other from the representative; layouts are cached per plural form.
     const M = shownA.get(shape);
-    let num = '';
-    let cat = '';
-    if (pr && !s.zero) {
-      // Plural-dependent names ("1 day", "5 days", ru "21 день"): a shape from shapeOf takes the plural form of
-      // the number it shows, built from that number when the representative's form differs (cached per form).
-      cat = pr.select(10 ** (Math.min(s.intDigits, INTL_MAX_INT) - 1));
-      const c = M ? pr.select(+toDecimal(String(M), f, false)) : cat;
-      if (c != cat) num = numStr(s.negative ? -(M as number) : (M as number));
-      cat = c;
-    }
+    const cat = pr && !s.zero ? pr.select(M ? +toDecimal(String(M), f, false) : 10 ** (Math.min(s.intDigits, INTL_MAX_INT) - 1)) : '';
     const k = [s.intDigits, +s.negative, +s.overflow, +s.zero, cat].join();
     let l = layouts.get(k);
-    if (!l) layouts.set(k, (l = build(s, num)));
+    if (!l) layouts.set(k, (l = build(s, M ? numStr(s.negative ? -M : M) : '')));
     return l;
   };
-  const keysOf = (l: NumberLayout): Set<string> => new Set(l.tokens.map((t) => t.key));
-
   const text = (A: number, overflow: boolean): string => {
     const a = safeA(A);
     const ovf = overflow && ovfText != '';
@@ -377,52 +368,7 @@ function newFormatter(o: NormalizedOptions): Formatter {
       if (pr && M) shownA.set(shape, M);
       return shape;
     },
-    shapeOfDisplay(d: DisplayState) {
-      let k = d.inn.length - 1;
-      while (k >= 0 && !(d.inn[k] > 0)) k--;
-      return { intDigits: Math.max(1, k - f + 1), negative: d.sigma > 0, overflow: d.ovf > 0, zero: false };
-    },
     layout,
-    motionLayout(fromShape, toShape) {
-      const from = norm(fromShape);
-      const to = norm(toShape);
-      // Same sign/overflow/zero state as `from`, with `d` integer digits.
-      const fromAt = (d: number): NumberLayout => layout({ ...from, intDigits: d });
-      // The original shapes: a shape from shapeOf keeps the plural form of its number.
-      const L0 = layout(fromShape);
-      const L3 = layout(toShape);
-      const S0 = keysOf(L0);
-      const S1 = keysOf(fromAt(to.intDigits));
-      const S2 = keysOf(layout({ ...to, overflow: from.overflow }));
-      const S3 = keysOf(L3);
-      const lo = Math.min(from.intDigits, to.intDigits);
-      const hi = Math.max(from.intDigits, to.intDigits);
-      // A non-digit token gets its tie from the first diff where it enters or leaves (§7.2): digits, then sign, then overflow.
-      const tieOf = (t: Token): Tie => {
-        const k = t.key;
-        if (t.kind == 'digit') return null;
-        if (S0.has(k) != S1.has(k)) {
-          // Tied to the column whose arrival/departure makes it appear/disappear: a group enters with the first
-          // column that needs it (g3 with i3 for "1,000"; with i4 for es min2 "10.000").
-          const base = keysOf(fromAt(lo)).has(k);
-          let d = lo + 1;
-          while (d < hi && keysOf(fromAt(d)).has(k) == base) d++;
-          return { kind: 'place', place: d - 1 + f };
-        }
-        if (S1.has(k) != S2.has(k)) return { kind: 'sign' };
-        return S2.has(k) != S3.has(k) ? { kind: 'overflow' } : null;
-      };
-      const merged: MotionToken[] = L3.tokens.map((t) => ({ token: t, presence: S0.has(t.key) ? 'both' : 'enter', tie: tieOf(t) }));
-      // Leaving tokens go right after their nearest preceding from-token already placed.
-      L0.tokens.forEach((t, i) => {
-        if (S3.has(t.key)) return;
-        let at = 0;
-        for (let p = i - 1; p >= 0 && !at; p--) at = merged.findIndex((m) => m.token.key == L0.tokens[p].key) + 1;
-        merged.splice(at, 0, { token: t, presence: 'leave', tie: tieOf(t) });
-      });
-      merged.forEach((m) => Object.freeze(m));
-      return Object.freeze({ tokens: Object.freeze(merged) });
-    },
     text,
     // ASCII `-`, pad zeros, `.` and the fraction: the plain-path parts.
     numericText: (A) => joinParts(plainParts(safeA(A), pad, '-')),
@@ -433,22 +379,76 @@ function newFormatter(o: NormalizedOptions): Formatter {
   };
 }
 
+// ── motion (core only) ────────────────────────────────────────────────
+
+/**
+ * A formatter without the motion members: `shapeOfDisplay` and `motionLayout`
+ * are added by {@link createFormatter} (the core's factory), so the SSR helpers,
+ * which only format, do not bundle them.
+ */
+type BaseFormatter = Omit<Formatter, 'shapeOfDisplay' | 'motionLayout'> & Partial<Pick<Formatter, 'shapeOfDisplay' | 'motionLayout'>>;
+
+const keysOf = (l: NumberLayout): Set<string> => new Set(l.tokens.map((t) => t.key));
+
+/**
+ * `Formatter#motionLayout` (§7.2): the layouts of `from` and `to` merged by key
+ * in target order, with presence and ties. `layout()` normalizes every shape
+ * (pad, sign of zero, overflow without a suffix), and the original shapes are
+ * passed to it, so a shape from `shapeOf` keeps the plural form of its number.
+ */
+function motionLayoutOf({ layout, f }: BaseFormatter, from: LayoutShape, to: LayoutShape): MotionLayout {
+  // Same sign/overflow/zero state as `from`, with `d` integer digits.
+  const fromAt = (d: number): NumberLayout => layout({ ...from, intDigits: d });
+  const L0 = layout(from);
+  const L3 = layout(to);
+  const S0 = keysOf(L0);
+  const S1 = keysOf(fromAt(to.intDigits));
+  const S2 = keysOf(layout({ ...to, overflow: from.overflow }));
+  const S3 = keysOf(L3);
+  // Shape digits below `pad` normalize to `pad`: the place search below starts above them either way.
+  const lo = Math.min(from.intDigits, to.intDigits);
+  const hi = Math.max(from.intDigits, to.intDigits);
+  // A non-digit token gets its tie from the first diff where it enters or leaves (§7.2): digits, then sign, then overflow.
+  const tieOf = (t: Token): Tie => {
+    const k = t.key;
+    if (t.kind == 'digit') return null;
+    if (S0.has(k) != S1.has(k)) {
+      // Tied to the column whose arrival/departure makes it appear/disappear: a group enters with the first
+      // column that needs it (g3 with i3 for "1,000"; with i4 for es min2 "10.000").
+      const base = keysOf(fromAt(lo)).has(k);
+      let d = lo + 1;
+      while (d < hi && keysOf(fromAt(d)).has(k) == base) d++;
+      return { kind: 'place', place: d - 1 + f };
+    }
+    if (S1.has(k) != S2.has(k)) return { kind: 'sign' };
+    return S2.has(k) != S3.has(k) ? { kind: 'overflow' } : null;
+  };
+  const merged: MotionToken[] = L3.tokens.map((t) => ({ token: t, presence: S0.has(t.key) ? 'both' : 'enter', tie: tieOf(t) }));
+  // Leaving tokens go right after their nearest preceding from-token already placed.
+  L0.tokens.forEach((t, i) => {
+    if (S3.has(t.key)) return;
+    let at = 0;
+    for (let p = i - 1; p >= 0 && !at; p--) at = merged.findIndex((m) => m.token.key == L0.tokens[p].key) + 1;
+    merged.splice(at, 0, { token: t, presence: 'leave', tie: tieOf(t) });
+  });
+  merged.forEach((m) => Object.freeze(m));
+  return Object.freeze({ tokens: Object.freeze(merged) });
+}
+
 // ── public (internal) API ─────────────────────────────────────────────
 
 /** Formatters by input key (least recently used evicted past 32). */
-const cache = new Map<string, Formatter>();
+const cache = new Map<string, BaseFormatter>();
 
 /**
- * Formatter for the normalized options (§7). The plain 1.x path is used when
- * neither `locale` nor `format` is set; otherwise `Intl.NumberFormat`, with a
- * fallback to the plain path (and a one-time warning) when it cannot be
- * constructed. Equal formatting options return the same instance (LRU of 32).
+ * The formatter of {@link createFormatter} without its motion members (they
+ * are added when the core asks for the same formatter): what the DOM-free SSR
+ * helpers need. Same cache and instances as `createFormatter`.
  *
- * @param o Normalized options (only `locale`, `format`, `decimals`, `pad`,
- *   `prefixText`, `suffixText` and `overflowSuffix` are read).
- * @returns The formatter.
+ * @param o Normalized options.
+ * @returns The formatter (motion members possibly absent).
  */
-export function createFormatter(o: NormalizedOptions): Formatter {
+export function createBaseFormatter(o: NormalizedOptions): BaseFormatter {
   let key: string | null = null;
   try {
     const fmt = (o.format || {}) as unknown as NFOptions;
@@ -469,6 +469,28 @@ export function createFormatter(o: NormalizedOptions): Formatter {
   return f;
 }
 
+/**
+ * Formatter for the normalized options (§7). The plain 1.x path is used when
+ * neither `locale` nor `format` is set; otherwise `Intl.NumberFormat`, with a
+ * fallback to the plain path (and a one-time warning) when it cannot be
+ * constructed. Equal formatting options return the same instance (LRU of 32).
+ *
+ * @param o Normalized options (only `locale`, `format`, `decimals`, `pad`,
+ *   `prefixText`, `suffixText` and `overflowSuffix` are read).
+ * @returns The formatter.
+ */
+export function createFormatter(o: NormalizedOptions): Formatter {
+  const fmt = createBaseFormatter(o);
+  const f = fmt.f;
+  fmt.shapeOfDisplay ||= (d: DisplayState): LayoutShape => {
+    let k = d.inn.length - 1;
+    while (k >= 0 && !(d.inn[k] > 0)) k--;
+    return { intDigits: Math.max(1, k - f + 1), negative: d.sigma > 0, overflow: d.ovf > 0, zero: false };
+  };
+  fmt.motionLayout ||= (from, to) => motionLayoutOf(fmt, from, to);
+  return fmt as Formatter;
+}
+
 const warnedLabelFns = new WeakSet<object>();
 
 /**
@@ -484,7 +506,7 @@ const warnedLabelFns = new WeakSet<object>();
  * @param overflow `true` when `|value| > max`.
  * @returns The label text.
  */
-export function resolveLabel(o: NormalizedOptions, f: Formatter, value: number, overflow: boolean): string {
+export function resolveLabel(o: NormalizedOptions, f: Pick<Formatter, 'labelText'>, value: number, overflow: boolean): string {
   const text = f.labelText(value);
   const label = o.label;
   if (typeof label == 'string') return label.split('{value}').join(text);

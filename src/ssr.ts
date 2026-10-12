@@ -9,7 +9,7 @@
  */
 import type { RollingNumberOptions, RollingNumberUpdate } from './types';
 import { OPTION_ATTRIBUTES, OPTION_KEYS, readOption, resolveOptions } from './options';
-import { createFormatter, resolveLabel } from './format';
+import { createBaseFormatter, resolveLabel } from './format';
 
 /** Tags accepted by {@link renderStaticHTML}. */
 const TAG_RE = /^[a-z][a-z0-9-]*$/;
@@ -31,7 +31,7 @@ function escapeHtml(s: string): string {
 /** What a counter shows at rest for `options`: the clamped text and the (unclamped) label. */
 function staticState(options: RollingNumberOptions | undefined): { text: string; label: string } {
   const o = resolveOptions(options as RollingNumberUpdate | undefined);
-  const fmt = createFormatter(o);
+  const fmt = createBaseFormatter(o);
   const A = fmt.quantize(o.value);
   const Amax = fmt.maxA(o.max);
   const overflow = Math.abs(A) > Amax;
