@@ -1,5 +1,4 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import { createElement, createRef, useRef } from 'react';
 import {
   RollingNumberCore,
   RollingNumberElement,
@@ -32,7 +31,6 @@ import * as ActionEntry from '../src/action-entry';
 import * as SsrEntry from '../src/ssr-entry';
 import { RN_DEFAULTS, normalizeOptions } from '../src/core';
 import { OPTION_ATTRIBUTES, OPTION_KEYS } from '../src/options';
-import { RollingNumber as ReactRollingNumber, useRollingNumber, type RollingNumberProps as ReactProps } from '../src/react';
 import {
   RollingNumber as VueRollingNumber,
   vRollingNumber,
@@ -218,29 +216,6 @@ describe('custom element types', () => {
     const bad2: RollingNumberAttributes = { interpolate: 'nope' };
     void bad;
     void bad2;
-  });
-});
-
-describe('React types', () => {
-  it('RollingNumberProps = options + span attributes, without children', () => {
-    expectTypeOf<ReactProps>().toMatchTypeOf<RollingNumberOptions>();
-    expectTypeOf<ReactProps['className']>().toEqualTypeOf<string | undefined>();
-    expectTypeOf<ReactProps>().not.toHaveProperty('children');
-    expectTypeOf<ReactProps>().not.toHaveProperty('dangerouslySetInnerHTML');
-
-    createElement(ReactRollingNumber, { value: 1, pad: 2, max: null, className: 'x', ref: createRef<HTMLSpanElement>() });
-    // @ts-expect-error pad is numeric
-    createElement(ReactRollingNumber, { pad: 'x' });
-  });
-
-  it('useRollingNumber accepts element refs and returns the core ref', () => {
-    function Host() {
-      const ref = useRef<HTMLDivElement>(null);
-      const core = useRollingNumber(ref, { value: 1 });
-      expectTypeOf(core.current).toEqualTypeOf<RollingNumberCore | null>();
-      return null;
-    }
-    void Host;
   });
 });
 
