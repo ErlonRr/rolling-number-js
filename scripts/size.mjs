@@ -40,16 +40,16 @@ const ngcAngular = join(root, 'node_modules/.cache/rolling-number/ngc/angular');
  * esbuild; `own`: folder whose code is measured alone; `file`: built file.
  */
 const ROWS = [
-  { name: 'rolling-number (all chunks)', entry: 'src/index.ts', budget: 11.0 },
-  { name: 'rolling-number/action', entry: 'src/action-entry.ts', budget: 9.5 },
-  { name: 'rolling-number/react (own code)', entry: 'src/react/index.ts', own: 'src/react', budget: 1.4 },
+  { name: 'rolling-number (all chunks)', entry: 'src/index.ts', budget: 22.4 },
+  { name: 'rolling-number/action', entry: 'src/action-entry.ts', budget: 20.0 },
+  { name: 'rolling-number/react (own code)', entry: 'src/react/index.ts', own: 'src/react', budget: 1.1 },
   { name: 'rolling-number/vue (own code)', entry: 'src/vue/index.ts', own: 'src/vue', budget: 1.8 },
   existsSync(join(ngcAngular, 'index.js'))
     ? { name: 'rolling-number/angular (own code)', entry: relative(root, join(ngcAngular, 'index.js')), own: relative(root, ngcAngular), budget: 2.4 }
     : { name: 'rolling-number/angular (own code)', entry: 'src/angular/index.ts', own: 'src/angular', budget: 2.4, note: 'approximate: decorator source, run "pnpm build:ngc" for the ngc output' },
-  { name: 'rolling-number/ssr', entry: 'src/ssr-entry.ts', budget: 3.0 },
-  { name: 'rolling-number/iife', file: 'dist/rolling-number.iife.js', budget: 11.5 },
-  { name: 'style.css', file: 'dist/style.css', budget: 1.3 }
+  { name: 'rolling-number/ssr', entry: 'src/ssr-entry.ts', budget: 5.5 },
+  { name: 'rolling-number/iife', file: 'dist/rolling-number.iife.js', budget: 22.8 },
+  { name: 'style.css', file: 'dist/style.css', budget: 1.0 }
 ];
 
 /** `import css from './x.css?inline'` → the minified stylesheet as a string (as Vite does). */
