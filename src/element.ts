@@ -220,33 +220,33 @@ function toAttributeString(val: unknown): string | null {
  */
 export class RollingNumberElement extends HTMLElementBase {
   /** @internal */
-  private core: RollingNumberCore | null = null;
+  private declare core: RollingNumberCore | null;
 
   /**
    * Function values of `easing`/`label` (not reflectable). A string attribute
    * set later replaces them.
    * @internal
    */
-  private fnSlot: { easing: RollingNumberEasing | null; label: ((info: RollingNumberLabelInfo) => string) | null } = { easing: null, label: null };
+  private declare fnSlot: { easing: RollingNumberEasing | null; label: ((info: RollingNumberLabelInfo) => string) | null };
 
   /**
    * The first connection used `from`: reconnecting never replays the intro.
    * @internal
    */
-  private fromConsumed = false;
+  private declare fromConsumed: boolean;
 
   /**
    * Options of the `setValue()` call in progress, consumed by the `value`
    * attribute change it causes.
    * @internal
    */
-  private stash: ValueStash | null = null;
+  private declare stash: ValueStash | null;
 
   /**
    * Parsed `format` attribute, cached by its text.
    * @internal
    */
-  private formatCache: { attr: string | null; value: RollingNumberFormat | null } = { attr: null, value: null };
+  private declare formatCache: { attr: string | null; value: RollingNumberFormat | null };
 
   /** Attributes that drive the counter: every option attribute plus `no-interpolate`. */
   static get observedAttributes(): string[] {
@@ -255,6 +255,11 @@ export class RollingNumberElement extends HTMLElementBase {
 
   constructor() {
     super();
+    // Assigned here rather than as field initializers, which compile to one helper call each.
+    this.core = this.stash = null;
+    this.fnSlot = { easing: null, label: null };
+    this.fromConsumed = false;
+    this.formatCache = { attr: null, value: null };
   }
 
   /** Creates the counter (re-applying properties set before the upgrade). */
