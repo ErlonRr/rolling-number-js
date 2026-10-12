@@ -422,10 +422,10 @@ describe('join rules (§8.2 step 2)', () => {
     expect(host.querySelector('[data-rn-key="i0"]')!.getAttribute('data-digit')).toBe('5');
     expect(host.querySelector('[data-rn-key="i1"]')!.getAttribute('data-digit')).toBe('5');
     expect(core.isAnimating()).toBe(true);
-    raf.frame(200); // first frame of the roll
-    raf.frame(699);
+    raf.frame(200); // first frame of the roll, which continues from the last written frame (t = 100)
+    raf.frame(599);
     expect(core.isAnimating()).toBe(true); // a roll lasts 500 ms
-    raf.frame(700);
+    raf.frame(600);
     expect(core.isAnimating()).toBe(false);
     expect(await a).toEqual({ value: 55, completed: true });
     expect(await b).toEqual({ value: 55, completed: true });
@@ -440,12 +440,12 @@ describe('join rules (§8.2 step 2)', () => {
     raf.frame(100);
     const shown = core.getDisplayValue();
     void core.setValue(100, { duration: 1000, easing: 'linear' });
-    raf.frame(200); // first frame of the new plan
-    raf.frame(700);
+    raf.frame(200); // first frame of the new plan, which starts at the last written frame (t = 100)
+    raf.frame(600);
     expect(core.getDisplayValue()).toBeCloseTo(shown + (100 - shown) / 2, 6);
-    raf.frame(1199);
+    raf.frame(1099);
     expect(core.isAnimating()).toBe(true);
-    raf.frame(1200);
+    raf.frame(1100);
     expect(core.isAnimating()).toBe(false);
     expect(digitsOf(host)).toBe('100');
   });
@@ -457,12 +457,11 @@ describe('join rules (§8.2 step 2)', () => {
     raf.frame(0);
     raf.frame(100);
     void core.setValue(100, { duration: 1000 });
-    raf.frame(200);
-    raf.frame(216);
-    expect(core.getDisplayValue()).toBeGreaterThan(57.8); // still moving forward on the next frame
-    raf.frame(599);
+    raf.frame(116); // the next frame keeps the speed at t = 100 (0.42 units/ms)
+    expect(core.getDisplayValue()).toBeGreaterThan(57.8 + 0.3 * 16);
+    raf.frame(499);
     expect(core.isAnimating()).toBe(true);
-    raf.frame(600); // D' = max(0.4 · 1000, 3 · ΔA / v) = 400
+    raf.frame(500); // D' = max(0.4 · 1000, 3 · ΔA / v) = 400, from the last written frame
     expect(core.isAnimating()).toBe(false);
   });
 });

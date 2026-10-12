@@ -493,11 +493,13 @@ describe('RollingNumberCore: interpolation', () => {
     expect(raf.pending()).toBe(1);
     expect(host.getAttribute('aria-label')).toBe('0');
 
-    raf.frame(1000); // start of the new animation: still showing the interrupted value
+    // The new plan continues from the last written frame (t = 200, §5.6); reversing
+    // a count first holds the display (the velocity carry dips, the count clamps it).
+    raf.frame(216);
     expect(core.getDisplayValue()).toBe(onScreen);
-    raf.frame(1100);
+    raf.frame(316);
     expect(core.getDisplayValue()).toBeLessThanOrEqual(onScreen);
-    raf.frame(1400);
+    raf.frame(600);
     expect(digitsOf(host)).toBe('0');
     expect(core.isAnimating()).toBe(false);
     expect(host.hasAttribute('data-rn-state')).toBe(false);

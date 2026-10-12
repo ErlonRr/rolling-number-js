@@ -136,6 +136,62 @@ describe('§14.1 frame scenarios (fake rAF, 16 ms frames)', () => {
   });
 });
 
+describe('retargets on every frame (§5.6: slider, live feed)', () => {
+  /** setValue(i·10) then one 16 ms frame, 60 times; returns the display after each frame. */
+  function feed(core: RollingNumberCore, animate?: boolean): number[] {
+    const shown: number[] = [];
+    for (let i = 1; i <= 60; i++) {
+      void core.setValue(i * 10, animate);
+      raf.frame(i * 16);
+      shown.push(core.getDisplayValue());
+    }
+    return shown;
+  }
+
+  it('count: the display follows monotonically with a continuous velocity', () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    const shown = feed(core);
+    // Before the fix every first frame of a retarget sampled progress 0: the display stayed at 0.
+    expect(shown[59]).toBeGreaterThan(400); // the target is 600
+    const steps = shown.slice(1).map((v, i) => v - shown[i]);
+    for (const step of steps) expect(step).toBeGreaterThan(0);
+    // it ends up moving at the feed's speed (10 per frame)
+    expect(steps[steps.length - 1]).toBeCloseTo(10, 0);
+    // no stall and no jump: once moving, each step stays within ±50% of the previous one
+    for (let i = 3; i < steps.length; i++) {
+      expect(steps[i] / steps[i - 1]).toBeGreaterThan(0.5);
+      expect(steps[i] / steps[i - 1]).toBeLessThan(1.5);
+    }
+    raf.runAll(61 * 16);
+    expect(core.getDisplayValue()).toBe(600);
+    expectAtRest(host);
+  });
+
+  it('roll: every retarget still advances the columns', () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    const before = columnPositions(host);
+    for (let i = 1; i <= 10; i++) {
+      void core.setValue(i, false);
+      raf.frame(i * 16);
+    }
+    expect(columnPositions(host).get('i0')).toBeGreaterThan(before.get('i0')! + 0.5);
+  });
+
+  it('a retarget from rest or after a pause starts at progress 0 on its first frame', () => {
+    const host = makeHost();
+    const core = create(host, { value: 0 });
+    void core.setValue(100);
+    raf.frame(0);
+    raf.frame(1000); // settled
+    void core.setValue(200);
+    raf.frame(5000);
+    expect(core.getDisplayValue()).toBe(100);
+    expect(core.isAnimating()).toBe(true);
+  });
+});
+
 describe('1.2 default output (byte-identical after settle)', () => {
   /** The 1.2 markup of the owned block: optional sign, then one column per digit. */
   function markup12(value: number, pad = 1, max: number | null = null): string {

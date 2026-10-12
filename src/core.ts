@@ -197,9 +197,11 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
   let fromDisplay = false;
   /** Start scalar of the current motion. */
   let A0 = 0;
-  /** First frame timestamp and last progress. */
+  /** Start timestamp of the plan and its last progress. */
   let t0 = 0;
   let p = 0;
+  /** Timestamp of the last frame written by the running motion (unset: from rest or resumed). */
+  let tw: number | undefined;
   let fs: FrameState | undefined;
   /** The motion settled in this frame's write phase. */
   let done = false;
@@ -233,7 +235,8 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     read: (now) => {
       const r = renderer;
       if (plan || !r) return;
-      t0 = now;
+      // A retarget continues from the last written frame (its first frame advances, §5.6).
+      t0 = tw ?? now;
       const t = resolveTiming(opts, call, probe, false, true);
       // A CSS-derived duration of 0 (roll with `--rn-duration: 0s`): the write phase lands now (§5.8).
       if (t.instant) return;
@@ -261,6 +264,7 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
       fs = sample(pl as Plan, (p = progress), fs);
       (renderer as Renderer).frame(fs);
       shown = fs.A;
+      tw = now;
       return false;
     },
     settled: () => mark(false),
@@ -501,7 +505,8 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     }
     epoch++;
     const display = mid ? r.displayed() : null;
-    prev = moving ? (plan ? { plan, p } : prev) : undefined;
+    if (!moving) prev = tw = undefined;
+    else if (plan) prev = { plan, p };
     fromDisplay = mid;
     A0 = mid ? shown : restA;
     r.begin(
