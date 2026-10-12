@@ -31,27 +31,15 @@ export const LAYOUT_KEYS = [
   'pad', 'max', 'decimals', 'locale', 'format', 'prefixText', 'suffixText', 'overflowSuffix', 'mode'
 ] as const satisfies readonly OptionKey[];
 
-/** HTML attribute name of each option (`prefixText` → `prefix-text`), used by `<rolling-number>` and `renderStaticHTML`. */
-export const OPTION_ATTRIBUTES: Readonly<Record<OptionKey, string>> = Object.freeze({
-  value: 'value',
-  pad: 'pad',
-  max: 'max',
-  interpolate: 'interpolate',
-  duration: 'duration',
-  easing: 'easing',
-  decimals: 'decimals',
-  locale: 'locale',
-  format: 'format',
-  prefixText: 'prefix-text',
-  suffixText: 'suffix-text',
-  overflowSuffix: 'overflow-suffix',
-  mode: 'mode',
-  from: 'from',
-  trigger: 'trigger',
-  label: 'label',
-  live: 'live',
-  injectStyles: 'inject-styles'
-});
+/**
+ * HTML attribute name of each option, used by `<rolling-number>` and
+ * `renderStaticHTML`: the key in kebab case (`prefixText` → `prefix-text`,
+ * `suffixText` → `suffix-text`, `overflowSuffix` → `overflow-suffix`,
+ * `injectStyles` → `inject-styles`; the other keys are single words).
+ */
+export const OPTION_ATTRIBUTES: Readonly<Record<OptionKey, string>> = Object.freeze(
+  Object.fromEntries(OPTION_KEYS.map((key) => [key, key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())])) as Record<OptionKey, string>
+);
 
 /**
  * Normalized defaults. `duration`, `easing`, `decimals`, `locale`, `format`
