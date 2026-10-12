@@ -1,6 +1,6 @@
 # Stato del progetto
 
-Ultimo aggiornamento: 2026-10-10. Questo file riassume il lavoro fatto e quello che resta, per chi riprende il progetto (persone o agenti AI). Dettagli tecnici in `docs/AUDIT.md` (audit e roadmap) e `docs/design/v1.3.md` (specifica v1.3).
+Ultimo aggiornamento: 2026-10-12. Questo file riassume il lavoro fatto e quello che resta, per chi riprende il progetto (persone o agenti AI). Dettagli tecnici in `docs/AUDIT.md` (audit e roadmap) e `docs/design/v1.3.md` (specifica v1.3).
 
 ## Fatto
 
@@ -18,9 +18,15 @@ Ultimo aggiornamento: 2026-10-10. Questo file riassume il lavoro fatto e quello 
 - Documentazione: README corretto, `CHANGELOG.md` (voce "Unreleased — 1.2.2"), `AGENTS.md`.
 - Revisione avversariale finale: 15 problemi confermati, tutti corretti.
 
-### 3. Design della v1.3 → branch `feat/v1.3` (basato su `fix/v1.2.x-audit`)
-- Due architetture opposte (compatibilità e leggerezza / qualità visiva e API), critica avversariale di ciascuna, sintesi e doppia revisione della specifica.
-- Specifica finale in `docs/design/v1.3.md` (revisione 2): API pubblica, interfacce tra moduli, 12 pacchetti di lavoro (WP0–WP11), matematica del contachilometri verificata in Chromium (5.921 animazioni casuali e 2.788 cambi di target a metà corsa, tutti con valore finale esatto), piano di test, registro dei rischi e voci rinviate.
+### 3. Design della v1.3 → `docs/design/v1.3.md`
+- Due architetture opposte, critiche incrociate, sintesi e doppia revisione. Specifica con API pubblica, contratti tra moduli e 12 pacchetti di lavoro (WP0–WP11).
+
+### 4. Implementazione della v1.3 → branch `feat/v1.3` (pushato)
+- WP0–WP11 completati: motore a contachilometri continuo, formattazione `Intl`, colonne con chiavi, modalità testo per input/textarea/option/SVG, iniezione automatica degli stili, eventi `rn-start`/`rn-end`, `setValue()` con Promise, azione `rollingNumber()`, helper SSR, build IIFE, adapter React/Vue/Angular/web component aggiornati.
+- Revisione avversariale in 4 aree: circa 50 problemi confermati, tutti corretti (29 commit) con test di regressione; un caso di nicchia (tipi ESM e CJS caricati insieme) documentato come limitazione.
+- Verifiche: 999 test unitari, test visivi Playwright su Chromium e Firefox (WebKit solo in CI), smoke, Angular AOT, tipi Vue, lint del pacchetto, controllo delle dimensioni.
+- Dimensioni approvate dal proprietario: entry principale circa 23 KB gzip con tutte le funzioni (limiti = misurato + 5%); moduli opzionali rinviati a 1.4/2.0.
+- Demo rifatta con la stessa struttura di sparkline-mini-charts (tema chiaro di default, sidebar, playground con codice generato per framework); README riscritto per la 1.3; CHANGELOG `[Unreleased] — 1.3.0`.
 
 ## Da fare
 
@@ -36,23 +42,11 @@ Ultimo aggiornamento: 2026-10-10. Questo file riassume il lavoro fatto e quello 
    - **S5**: una `duration` esplicita regola anche le rotazioni;
    - **S6**: a metà conteggio i `data-digit` delle colonne non formano più il numero intermedio.
 
-### v1.3 — implementazione (branch `feat/v1.3`)
-Ordine previsto dalla specifica (§3):
-1. **WP0 Foundation**: tipi, opzioni, contratti tra moduli, stub, entry, exports.
-2. **In parallelo**:
-   - WP1: motore di animazione;
-   - WP2: formattazione `Intl` e SSR;
-   - WP3: renderer a colonne e CSS;
-   - WP4: modalità testo, accessibilità e visibilità;
-   - WP5: iniezione degli stili, build IIFE, CI, Playwright.
-3. **In parallelo**:
-   - WP6: orchestratore del core;
-   - WP7: web component, azione `rollingNumber()` e tipi;
-   - WP8: React;
-   - WP9: Vue;
-   - WP10: Angular.
-4. **WP11**: test visivi Playwright su 3 motori, demo su `dist`, documentazione.
-5. Revisione avversariale, correzioni, commit, PR `feat/v1.3` → `main` (dopo l'unione della 1.2.x).
+### v1.3 — rilascio
+1. Aprire e unire la PR `feat/v1.3` → `main` (dopo la 1.2.x, oppure direttamente: contiene anche i commit della 1.2.x):
+   https://github.com/ErlonRr/rolling-number-js/compare/main...feat/v1.3?expand=1
+2. Bump a 1.3.0 in `package.json`, data nel CHANGELOG, `pnpm publish` (esegue tutti i controlli).
+3. Verificare la CI su GitHub (non è mai stata eseguita) e i test visivi WebKit.
 
 ### v2.0 — breaking (dopo la v1.3)
 Sottoalbero `.rn-root` gestito dal core con l'host intatto, rimozione di `role="img"`, `textContent` pulito, entry principale senza auto-registrazione, rimozione dell'euristica `-input` di Angular, semantica di riconnessione del custom element, Shadow DOM opzionale con `::part`. Dettagli in `docs/AUDIT.md` §5 e `docs/design/v1.3.md` §13.
