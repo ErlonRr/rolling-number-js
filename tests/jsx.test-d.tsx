@@ -36,6 +36,15 @@ describe('JSX typing', () => {
     void (<rolling-number interpolate="nope" />);
   });
 
+  it('accepts `class` on <rolling-number> (React 18 writes `className` as an inert attribute)', () => {
+    const ok = <rolling-number class="badge" value={1} />;
+    expectTypeOf(ok).not.toBeAny();
+    expectTypeOf<RollingNumberJSXProps['class']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<RollingNumberJSXProps['className']>().toEqualTypeOf<string | undefined>();
+    // @ts-expect-error class is a string
+    void (<rolling-number class={5} />);
+  });
+
   it('types the 1.3 attributes of <rolling-number>', () => {
     const ok = (
       <rolling-number

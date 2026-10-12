@@ -61,14 +61,25 @@ export interface RollingNumberJSXEvents {
  * `inject-styles` accepts only `"true"`/`"false"` here: React 19 removes an
  * attribute bound to the boolean `false` (which would silently keep style
  * injection on), so write `inject-styles="false"`.
+ *
+ * Classes: write `class="…"` (React 18 and 19). `className` only works on
+ * React 19; React 18 writes it as an inert `classname` attribute on custom
+ * elements. The element keeps its own `rn-rolling-number` class either way.
  */
 export type RollingNumberJSXProps = Omit<
   DetailedHTMLProps<HTMLAttributes<RollingNumberElement>, RollingNumberElement>,
-  keyof RollingNumberAttributes | keyof RollingNumberJSXEvents | 'children' | 'dangerouslySetInnerHTML'
+  keyof RollingNumberAttributes | keyof RollingNumberJSXEvents | 'children' | 'dangerouslySetInnerHTML' | 'className'
 > &
   Omit<RollingNumberAttributes, 'inject-styles'> & {
     /** `"false"` opts this counter out of automatic style injection (a string: React 19 drops `false` attributes). @default 'true' */
     'inject-styles'?: 'true' | 'false' | null;
+    /** CSS classes (the `class` attribute). Works on React 18 and 19, unlike `className`. */
+    class?: string;
+    /**
+     * CSS classes. **React 19 only**: React 18 writes `className` on a custom
+     * element as an inert `classname` attribute; use `class` there.
+     */
+    className?: string;
   } & RollingNumberJSXEvents;
 
 declare module 'react' {
