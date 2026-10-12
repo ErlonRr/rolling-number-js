@@ -708,17 +708,60 @@ describe('trigger: "visible" and the from intro (§8.3)', () => {
     expect(Array.from(host.childNodes)).toEqual([fallback]);
   });
 
-  it('from with an adopted fallback and trigger "visible" before visibility: the intro runs on visibility', () => {
+  /** A host with an adopted server fallback showing 100. */
+  function ssrFallbackHost(): HTMLElement {
     const host = makeHost();
     const fallback = document.createElement('span');
     fallback.setAttribute('data-rn-ssr', '');
+    fallback.textContent = '100';
     host.appendChild(fallback);
+    return host;
+  }
+
+  it('from with an adopted fallback and trigger "visible": `value` until the first IO callback; hidden → `from` now, the intro on visibility', async () => {
+    const host = ssrFallbackHost();
+    const log = recordEvents(host, true);
     const core = create(host, { value: 100, from: 0, trigger: 'visible' });
+    // visibility unknown: the server content keeps showing the value (no regression to `from`)
+    expect(core.getDisplayValue()).toBe(100);
+    expect(digitsOf(host)).toBe('100');
+    io.intersect(host, 0.1); // first callback: not visible (below the 25% threshold)
     expect(core.getDisplayValue()).toBe(0);
+    expect(digitsOf(host)).toBe('0');
+    expect(raf.pending()).toBe(0);
+    await flush();
+    expect(log).toEqual([]);
     io.intersect(host, 1);
     expect(core.isAnimating()).toBe(true);
     raf.runAll();
     expect(digitsOf(host)).toBe('100');
+    expect(log).toEqual(['rn-start:100:true:from=0', 'rn-end:100:true:from=0']);
+  });
+
+  it('from with an adopted fallback and trigger "visible": visible at the first IO callback → no intro, no events', async () => {
+    const host = ssrFallbackHost();
+    const log = recordEvents(host);
+    const core = create(host, { value: 100, from: 0, trigger: 'visible' });
+    io.intersect(host, 1);
+    expect(core.isAnimating()).toBe(false);
+    expect(raf.pending()).toBe(0);
+    io.intersect(host, 0);
+    io.intersect(host, 1);
+    expect(core.getDisplayValue()).toBe(100);
+    await flush();
+    expect(log).toEqual([]);
+  });
+
+  it('from with an adopted fallback and trigger "visible": a change before the first IO callback replaces the intro', () => {
+    const host = ssrFallbackHost();
+    const log = recordEvents(host, true);
+    const core = create(host, { value: 100, from: 0, trigger: 'visible' });
+    void core.setValue(150);
+    io.intersect(host, 0);
+    expect(core.getDisplayValue()).toBe(100);
+    io.intersect(host, 1);
+    raf.runAll();
+    expect(log).toEqual(['rn-start:150:true:from=100', 'rn-end:150:true:from=100']);
   });
 });
 

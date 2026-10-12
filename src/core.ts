@@ -57,8 +57,16 @@ const STATE = 'data-rn-state';
 /** Marker of server-rendered content (a fallback child, or a host rendered by `renderStaticHTML` / Vue `getSSRProps`). */
 const SSR = 'data-rn-ssr';
 
-/** Live core instance per host element (one core per host). */
-const instances = new WeakMap<Element, RollingNumberCore>();
+/**
+ * Live core instance per host element (one core per host), shared by every
+ * copy of the package loaded in the page (ESM, CJS, IIFE), so they replace
+ * each other's cores too. Created on first use: importing defines no global.
+ */
+const instances = (): WeakMap<Element, RollingNumberCore> =>
+  ((globalThis as { [key: symbol]: unknown })[Symbol.for('rolling-number.instances')] ??= new WeakMap()) as WeakMap<
+    Element,
+    RollingNumberCore
+  >;
 
 /** Hosts that already received the unsupported-host warning. */
 const warnedHosts = new WeakSet<Element>();
@@ -232,9 +240,13 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
   let prevRole: string | null = null;
   let prevLabel: string | null = null;
   let addedClass = false;
+  /** The host was copied from a live counter: its role, label and class are core-owned. */
+  let owned = false;
 
   /** Last visibility reported for `trigger: 'visible'` (unset: unknown). */
   let seen: boolean | undefined;
+  /** `from` of an intro over adopted server content, decided by the first IO callback (§8.3). */
+  let pend: number | undefined;
   let vis: { stop(): void } | undefined;
   let release: (() => void) | undefined;
 
@@ -305,16 +317,22 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     }
     if (res === 'unsupported') return;
     renderer = (res === 'text' ? createTextRenderer : createColumnsRenderer)(host, doc, fmt);
+    // The markers of a server-rendered host (or of a copied live counter) are
+    // core-owned: removed, not restored, on destroy.
+    const ssr = owned || host.hasAttribute(SSR);
+    host.removeAttribute(SSR);
     if (res === 'columns') {
-      // Role and label of a server-rendered host are core-owned: removed (not restored) on destroy.
-      const ssr = host.hasAttribute(SSR);
       prevRole = ssr ? null : host.getAttribute('role');
       prevLabel = ssr ? null : host.getAttribute('aria-label');
-      addedClass = !host.classList.contains(ROOT_CLASS);
-      host.removeAttribute(SSR);
-      mark(false);
+      addedClass = owned || !host.classList.contains(ROOT_CLASS);
       host.setAttribute('role', 'img');
+    } else if (ssr) {
+      // Text mode sets no host markers: drop the columns ones.
+      host.removeAttribute('role');
+      host.removeAttribute('aria-label');
+      host.classList.remove(ROOT_CLASS);
     }
+    mark(false);
   };
 
   /** Destroys the renderer and restores the host markers (inverse of setup()). */
@@ -413,6 +431,9 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     moving = false;
   };
 
+  /** The server-rendered fallback child (`[data-rn-ssr]`), if any. */
+  const fallback = (): Element | null => host.querySelector(':scope>[' + SSR + ']');
+
   /** Final DOM of the target. */
   const land = (): void => {
     renderer?.rest(restOf(A1));
@@ -422,13 +443,26 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     disarm();
   };
 
-  /** Observes the host for `trigger: 'visible'`; a waiting change starts once it is visible. */
+  /**
+   * Observes the host for `trigger: 'visible'`; a waiting change starts once
+   * it is visible. Adopted server content with a `from` intro keeps showing
+   * `value` until the first callback: visible → no intro; not visible →
+   * `from` now (no events), and the intro runs on visibility (§8.3).
+   */
   const observe = (): void => {
-    seen = undefined;
+    seen = pend = undefined;
     // The no-IO fallback calls back before returning: the handle is not used in the callback.
     vis = observeVisibility(host, (visible) => {
+      const a = pend;
       seen = visible;
-      if (visible && waiting && !dead) go();
+      pend = undefined;
+      if (dead) return;
+      if (a !== undefined && !visible) {
+        restA = fmt.quantize(a);
+        shown = clampA(restA, Amax);
+        renderer?.rest(restOf(restA));
+        void change(undefined);
+      } else if (visible && waiting) go();
     });
   };
 
@@ -556,6 +590,7 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
 
     ensureStyles(host, opts.injectStyles);
     call = animate;
+    pend = undefined;
     if (!mid && target === restA && !started) {
       // Waiting, and set back to the value at rest on screen (§8.2 step 2): resolve now, no events.
       waiting = false;
@@ -619,8 +654,19 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
   Amax = fmt.maxA(o.max);
   value = o.value;
 
+  // Owned nodes copied with the host from a live counter (cloneNode, an
+  // outerHTML round trip): only a core creates `data-rn-key` children.
+  for (const el of Array.from(host.children)) {
+    if (el.hasAttribute('data-rn-key')) {
+      el.remove();
+      owned = true;
+    }
+  }
   // Server-rendered content: a host rendered by renderStaticHTML / getSSRProps, or a fallback child.
-  const adopted = host.hasAttribute(SSR) || !!host.querySelector(':scope>[' + SSR + ']');
+  const fb = fallback();
+  const adopted = host.hasAttribute(SSR) || !!fb;
+  /** The fallback child destroy() shows again (a renderer swap keeps it hidden). */
+  const fbShow = fb && (owned || !fb.hasAttribute('hidden')) ? fb : null;
   setup();
   ensureStyles(host, o.injectStyles);
   if (o.live !== 'off') release = retainAnnouncer(host);
@@ -628,16 +674,16 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
 
   A1 = fmt.quantize(value);
   writeLabel();
-  // `from` intro (§8.3): skipped under reduced motion, and when visible server content was adopted.
+  // `from` intro (§8.3): skipped under reduced motion and over adopted server
+  // content (with trigger 'visible' and visibility unknown, the first IO callback decides).
   const fromA = o.from === null ? A1 : fmt.quantize(o.from);
-  const intro =
-    fromA !== A1 &&
-    !reduced() &&
-    !(adopted && res === 'columns' && (o.trigger !== 'visible' || seen === true));
-  restA = intro ? fromA : A1;
+  const ssr = adopted && res === 'columns';
+  const intro = fromA !== A1 && !reduced();
+  if (intro && ssr && o.trigger === 'visible' && seen === undefined) pend = o.from as number;
+  restA = intro && !ssr ? fromA : A1;
   shown = clampA(restA, Amax);
-  renderer?.mount(restOf(restA), true);
-  if (intro) void change(undefined);
+  renderer?.mount(restOf(restA), !!fb);
+  if (restA !== A1) void change(undefined);
 
   return {
     render,
@@ -680,9 +726,13 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
         shown = clampA(A1, Amax);
         const rest = restOf(A1);
         if (nextRes !== res) {
+          // An adopted fallback stays hidden across the renderer swap.
+          const fb = fallback();
+          const hidden = fb?.hasAttribute('hidden');
           teardown();
           setup();
-          renderer?.mount(rest, true);
+          if (hidden) fb!.setAttribute('hidden', '');
+          renderer?.mount(rest, !!fb);
         } else {
           renderer?.setFormatter(nextFmt);
           renderer?.rest(rest);
@@ -721,7 +771,9 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
       release?.();
       vis = release = undefined;
       teardown();
-      if (instances.get(host) === self) instances.delete(host);
+      fbShow?.removeAttribute('hidden');
+      const live = instances();
+      if (live.get(host) === self) live.delete(host);
       const list = waiters;
       waiters = [];
       settle(list, false);
@@ -799,8 +851,9 @@ export class RollingNumberCore {
     }
 
     // A host can only be driven by one core: tear down the previous one first.
-    instances.get(container)?.destroy();
-    instances.set(container, this);
+    const live = instances();
+    live.get(container)?.destroy();
+    live.set(container, this);
     this.host = container;
     this.engine = createEngine(this, container, options);
   }

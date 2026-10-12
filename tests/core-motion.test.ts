@@ -477,6 +477,98 @@ describe('host handling', () => {
     expect(fallback.hasAttribute('hidden')).toBe(false);
   });
 
+  /** `<span class="rn-rolling-number" role="img" aria-label="42" data-rn-ssr><span class="rn-ssr" data-rn-ssr>42</span></span>`. */
+  function ssrHost(): { host: HTMLElement; fallback: HTMLElement } {
+    const host = makeHost();
+    host.className = 'rn-rolling-number';
+    host.setAttribute('role', 'img');
+    host.setAttribute('aria-label', '42');
+    host.setAttribute('data-rn-ssr', '');
+    const fallback = document.createElement('span');
+    fallback.className = 'rn-ssr';
+    fallback.setAttribute('data-rn-ssr', '');
+    fallback.textContent = '42';
+    host.appendChild(fallback);
+    return { host, fallback };
+  }
+
+  it('text mode on a server-rendered columns host: the SSR host markers are core-owned (removed, never restored)', () => {
+    const { host } = ssrHost();
+    const core = create(host, { value: 42, mode: 'text' });
+    expect(core.getMode()).toBe('text');
+    expect(host.hasAttribute('role')).toBe(false);
+    expect(host.hasAttribute('aria-label')).toBe(false);
+    expect(host.hasAttribute('data-rn-ssr')).toBe(false);
+    expect(host.classList.contains('rn-rolling-number')).toBe(false);
+    core.destroy();
+    expect(host.hasAttribute('role')).toBe(false);
+    expect(host.hasAttribute('aria-label')).toBe(false);
+    expect(host.classList.contains('rn-rolling-number')).toBe(false);
+  });
+
+  it('update({ mode }) columns → text keeps an adopted fallback hidden; destroy() shows it again', () => {
+    const { host, fallback } = ssrHost();
+    const core = create(host, { value: 42 });
+    expect(fallback.hasAttribute('hidden')).toBe(true);
+    core.update({ mode: 'text' });
+    expect(core.getMode()).toBe('text');
+    expect(fallback.hasAttribute('hidden')).toBe(true);
+    core.update({ mode: 'columns' });
+    expect(fallback.hasAttribute('hidden')).toBe(true);
+    expect(digitsOf(host)).toBe('42');
+    core.destroy();
+    expect(fallback.hasAttribute('hidden')).toBe(false);
+    expect(Array.from(host.childNodes)).toEqual([fallback]);
+  });
+
+  it.each([
+    ['cloneNode(true)', (el: HTMLElement): HTMLElement => el.cloneNode(true) as HTMLElement],
+    ['an outerHTML round trip', (el: HTMLElement): HTMLElement => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = el.outerHTML;
+      return wrap.firstElementChild as HTMLElement;
+    }]
+  ])('a live counter copied with %s: the new core drops the stale nodes; role/label/class are core-owned', (_name, copy) => {
+    const original = makeHost();
+    original.appendChild(document.createElement('b')).textContent = 'Score: ';
+    create(original, { value: 42 });
+    void cores[cores.length - 1].setValue(4242);
+    raf.frame(0);
+    raf.frame(100); // copied mid-motion: inline styles and animating markers too
+    const host = copy(original);
+    document.body.appendChild(host);
+    const core = create(host, { value: 42 });
+    expect(shownText(host)).toBe('42');
+    expect(ownedNodes(host)).toHaveLength(2);
+    expect(host.firstElementChild!.tagName).toBe('B');
+    expect(host.getAttribute('aria-label')).toBe('42');
+    expect(host.hasAttribute('data-rn-state')).toBe(false);
+    expect(host.classList.contains('rn-interpolating')).toBe(false);
+    core.destroy();
+    expect(host.hasAttribute('role')).toBe(false);
+    expect(host.hasAttribute('aria-label')).toBe(false);
+    expect(host.className).toBe('');
+    expect(host.innerHTML).toBe('<b>Score: </b>');
+  });
+
+  it('one core per host across package copies (ESM + CJS / IIFE): a copy replaces the other copy’s core', async () => {
+    vi.resetModules();
+    const copy = await import('../src/core');
+    expect(copy.RollingNumberCore).not.toBe(RollingNumberCore);
+    const host = makeHost();
+    const first = create(host, { value: 1 });
+    const second = new copy.RollingNumberCore(host, { value: 2 });
+    void first.setValue(5);
+    expect(first.isAnimating()).toBe(false); // destroyed: inert
+    expect(digitsOf(host)).toBe('2');
+    const third = create(host, { value: 3 });
+    void second.setValue(6);
+    expect(second.isAnimating()).toBe(false);
+    expect(digitsOf(host)).toBe('3');
+    third.destroy();
+    expect(host.childNodes).toHaveLength(0);
+  });
+
   it('live: announces the label of each settled value (debounced in a11y.ts)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
