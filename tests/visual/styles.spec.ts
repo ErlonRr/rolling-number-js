@@ -203,8 +203,7 @@ test.describe('stylesheet pinned at 1.2 (crit-A H5)', () => {
       for (const animate of [true, false]) {
         await setValue(host, animate ? 5681 : 5690, animate);
         await runMotion(page, host);
-        // Jump any replayed 1.2 transition to its end: that defect is the B17 test below
-        // (Firefox only); here only the rest position counts.
+        // Only the rest position counts here; the B17 tests below check that no transition replays.
         await host.evaluate((el) => el.getAnimations({ subtree: true }).forEach((a) => a.finish()));
         expect(await visibleDigits(host)).toBe(animate ? '5681' : '5690');
         expect(await leftovers(host)).toEqual([]);
@@ -216,17 +215,7 @@ test.describe('stylesheet pinned at 1.2 (crit-A H5)', () => {
   // markers still disable transitions, so a pinned 1.2 sheet (`.rn-scale { transition:
   // transform … }`) or a user transition never replays from the last inline position.
   for (const ending of ['count settle', 'roll settle across the wrap cell', 'finish()'] as const) {
-    test(`the 1.2 transition does not replay after a ${ending} (B17)`, async ({ page, browserName }) => {
-      test.fixme(
-        browserName === 'firefox',
-        'Library bug (Gecko only): the flush that must precede the removal of data-rn-state is a no-op in Firefox. ' +
-          'src/engine/ticker.ts (flush phase) reads getComputedStyle(documentElement).opacity and core.ts mark(false, true) ' +
-          'reads getComputedStyle(host).opacity; Gecko only restyles the element and its ancestors for such a read, not the ' +
-          'dirty .rn-scale descendants, so the inline transform removal and the re-enabled 1.2 transition are styled together ' +
-          'and a CSSTransition starts (e.g. translateY(-100%) → translateY(0%) after a roll 8→0: the units column rolls back ' +
-          'through 9…1 for 0.5 s). Forcing a real flush (documentElement.offsetWidth, or reading the scales’ computed ' +
-          'transform) in the same place removes it.'
-      );
+    test(`the 1.2 transition does not replay after a ${ending} (B17)`, async ({ page }) => {
       await openStage(page, STAGE + '?css=1.2&inject=0');
       const host = await addCounter(page, 'n', { value: 5678 }, { style: 'font-size: 40px' });
       if (ending === 'count settle') {

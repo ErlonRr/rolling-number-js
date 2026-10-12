@@ -3,7 +3,7 @@ import type { Tickable } from '../../src/internal/contracts';
 /**
  * A minimal Window stand-in for the shared ticker (`src/engine/ticker.ts`):
  * its own rAF queue (frames run only when the test calls `frame`), a
- * `getComputedStyle` that records style flushes, and a `log` shared with
+ * `documentElement.offsetWidth` that records layout flushes, and a `log` shared with
  * {@link recordingTickable}. Independent of the global window, so ticker
  * tests never interfere with counters on `window`.
  */
@@ -20,7 +20,7 @@ export interface FakeView {
   requested(): number;
   /** Total cancelAnimationFrame calls. */
   cancelled(): number;
-  /** Number of `getComputedStyle(documentElement).opacity` reads (style flushes). */
+  /** Number of `documentElement.offsetWidth` reads (forced layout flushes). */
   flushes(): number;
   /** Event log: `'flush'` entries plus whatever recording tickables push. */
   readonly log: string[];
@@ -33,7 +33,14 @@ export function createFakeView(): FakeView {
   let flushes = 0;
   const queue = new Map<number, FrameRequestCallback>();
   const log: string[] = [];
-  const documentElement = { nodeType: 1 };
+  const documentElement = {
+    nodeType: 1,
+    get offsetWidth(): number {
+      flushes++;
+      log.push('flush');
+      return 0;
+    }
+  };
   const view = {
     document: { documentElement },
     requestAnimationFrame(cb: FrameRequestCallback): number {
@@ -44,17 +51,6 @@ export function createFakeView(): FakeView {
     cancelAnimationFrame(id: number): void {
       cancelled++;
       queue.delete(id);
-    },
-    getComputedStyle(el: unknown) {
-      return {
-        get opacity(): string {
-          if (el === documentElement) {
-            flushes++;
-            log.push('flush');
-          }
-          return '1';
-        }
-      };
     },
     performance: { now: () => 0 },
     setTimeout,

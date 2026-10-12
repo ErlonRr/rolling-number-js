@@ -322,14 +322,15 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
    * Host markers: `data-rn-state="animating"` while moving; in columns mode
    * also the root class (re-added when a framework clobbered `className`) and
    * the legacy `rn-interpolating` class. Writes only what differs. `flush`
-   * reads a computed style before the markers go away, so user or pinned-1.2
+   * forces a layout (which flushes every style, also in Gecko) before the
+   * markers go away, so user or pinned-1.2
    * transitions never replay from the intermediate digits (the ticker flushes
    * once per frame itself).
    */
   const mark = (on: boolean, flush?: boolean): void => {
     const list = host.classList;
     if (!renderer) return;
-    if (!on && flush && host.hasAttribute(STATE)) void view?.getComputedStyle(host).opacity;
+    if (!on && flush && host.hasAttribute(STATE)) void (doc.documentElement as HTMLElement | null)?.offsetWidth;
     if (res === 'columns') {
       if (!list.contains(ROOT_CLASS)) list.add(ROOT_CLASS);
       if (list.contains(ANIM_CLASS) !== on) list.toggle(ANIM_CLASS);

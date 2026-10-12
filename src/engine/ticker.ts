@@ -157,12 +157,14 @@ function runFrame(loop: Loop, token: object, now: number): void {
         fail(loop, t, err);
       }
     }
-    // 3. flush: one style read for the whole frame, only when something settled.
+    // 3. flush: one forced layout for the whole frame, only when something
+    // settled. A layout read flushes the styles of every element; a computed
+    // style read of the root does not in Gecko (it restyles only that element
+    // and its ancestors), which let pinned 1.2 transitions replay.
     if (settled.length > 0) {
       try {
-        const view = loop.view;
-        const root = view.document && view.document.documentElement;
-        if (root && typeof view.getComputedStyle === 'function') void view.getComputedStyle(root).opacity;
+        const root = loop.view.document && loop.view.document.documentElement;
+        if (root) void (root as HTMLElement).offsetWidth;
       } catch {
         // A detached window has nothing to flush.
       }
