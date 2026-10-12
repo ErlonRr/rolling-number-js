@@ -3,478 +3,683 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>rolling-number — animated odometer counter for any element and framework</title>
-  <meta name="description" content="Zero-dependency animated number counter: Web Component, vanilla JS, React, Vue, Angular and Svelte. Works in spans, buttons, inputs, textareas and SVG." />
+  <title>Rolling Number — animated odometer counter for any element and framework</title>
+  <meta name="description" content="Zero-dependency animated number counter: Web Component, vanilla JS, React, Vue, Angular and Svelte. Works in spans, buttons, table cells, inputs, textareas and SVG." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    // Theme before first paint (light by default; the toggle remembers the choice).
+    try { if (localStorage.getItem('rn-demo-theme') === 'dark') document.documentElement.classList.add('dark'); } catch {}
+  </script>
   <style>
     :root {
-      --bg-color: #0e0b16;
-      --card-bg: rgba(22, 18, 36, 0.75);
-      --panel-bg: rgba(14, 11, 22, 0.85);
-      --border-color: rgba(255, 255, 255, 0.08);
-      --accent-color: #8b5cf6;
-      --accent-soft: rgba(139, 92, 246, 0.15);
-      --accent-gradient: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
-      --text-color: #f3f1f8;
-      --text-muted: #9d99ab;
-      --mono: 'JetBrains Mono', ui-monospace, monospace;
+      --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+      /* Light theme (default) */
+      --bg: hsl(210 40% 98%);
+      --surface: hsl(0 0% 100%);
+      --surface-muted: hsl(210 30% 95%);
+      --border: hsl(215 25% 88%);
+      --text: hsl(222 47% 11%);
+      --text-muted: hsl(215 18% 42%);
+      --primary: hsl(250 84% 60%);
+      --primary-hover: hsl(250 84% 54%);
+      --primary-subtle: hsl(250 84% 96%);
+      --on-primary: hsl(0 0% 100%);
+      --input-border: hsl(215 16% 55%);
+      --code-bg: hsl(222 47% 11%);
+      --code-text: hsl(210 40% 96%);
+      --emerald: hsl(160 84% 25%);
+      --rose: hsl(350 80% 45%);
+      --cyan: hsl(199 89% 48%);
+
+      --sidebar-width: 270px;
+      --header-height: 68px;
+      color-scheme: light;
+      font-family: var(--font-sans);
+    }
+    html.dark {
+      --bg: hsl(224 71% 4%);
+      --surface: hsl(222 47% 9%);
+      --surface-muted: hsl(223 47% 13%);
+      --border: hsl(217 33% 18%);
+      --text: hsl(210 40% 98%);
+      --text-muted: hsl(215 20% 65%);
+      --primary: hsl(250 84% 72%);
+      --primary-hover: hsl(250 84% 78%);
+      --primary-subtle: hsl(250 50% 14%);
+      --on-primary: hsl(224 71% 4%);
+      --input-border: hsl(217 20% 45%);
+      --code-bg: hsl(224 71% 6%);
+      --code-text: hsl(210 40% 96%);
+      --emerald: hsl(158 64% 52%);
+      --rose: hsl(350 89% 70%);
+      color-scheme: dark;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; }
     [hidden] { display: none !important; }
+    html { scroll-padding-top: calc(var(--header-height) + 1rem); }
+    body { margin: 0; background: var(--bg); color: var(--text); font-size: 0.95rem; line-height: 1.6; min-height: 100vh; transition: background-color 0.25s ease, color 0.25s ease; }
+    .bg-matrix { position: fixed; inset: 0; background-image: radial-gradient(color-mix(in srgb, var(--text) 6%, transparent) 1px, transparent 1px); background-size: 24px 24px; pointer-events: none; z-index: 0; }
+    a { color: var(--primary); }
+    h1, h2, h3 { line-height: 1.2; margin: 0; letter-spacing: -0.02em; }
+    p { margin: 0; }
+    code, pre, kbd { font-family: var(--font-mono); font-variant-ligatures: none; }
+    :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-    html { scroll-behavior: smooth; }
+    /* ── Header ─────────────────────────────────────────── */
+    .app-header { position: sticky; top: 0; z-index: 30; height: var(--header-height); display: flex; align-items: center; gap: 1rem; padding: 0 clamp(1rem, 2.5vw, 2.5rem); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+    .brand { display: inline-flex; align-items: center; gap: 0.7rem; color: var(--text); text-decoration: none; font-weight: 700; font-size: 1.15rem; white-space: nowrap; }
+    .logo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(135deg, hsl(250 84% 64%), hsl(271 91% 65%)); color: #fff; font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 35%, transparent); }
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+    .nav-btn { background: var(--surface-muted); border: 1px solid var(--border); color: var(--text); padding: 0.45rem 0.75rem; border-radius: 8px; font: inherit; font-weight: 600; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.45rem; text-decoration: none; transition: border-color 0.2s ease, background 0.2s ease; }
+    .nav-btn:hover { border-color: var(--primary); }
+    .nav-btn.icon { padding: 0.45rem 0.6rem; }
+    .nav-btn svg { width: 18px; height: 18px; fill: currentColor; }
+    .install-chip code { font-size: 0.82rem; font-weight: 500; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); }
+    .menu-btn { display: none; }
 
-    body {
-      font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: var(--bg-color);
-      color: var(--text-color);
-      min-height: 100vh;
-      padding: 2.5rem 1rem 4rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background-image:
-        radial-gradient(circle at 15% 15%, rgba(139, 92, 246, 0.15) 0%, transparent 45%),
-        radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.15) 0%, transparent 45%);
-      background-attachment: fixed;
-    }
+    /* ── Layout ─────────────────────────────────────────── */
+    .layout { position: relative; z-index: 1; display: flex; }
+    .sidebar { width: var(--sidebar-width); flex-shrink: 0; position: sticky; top: var(--header-height); height: calc(100vh - var(--header-height)); overflow-y: auto; border-right: 1px solid var(--border); padding: 1.75rem 1.25rem; display: flex; flex-direction: column; gap: 1.4rem; background: color-mix(in srgb, var(--bg) 95%, transparent); }
+    .nav-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 0.4rem 0.75rem; }
+    .nav-group a { display: block; padding: 0.45rem 0.75rem; border-radius: 8px; color: var(--text-muted); text-decoration: none; font-weight: 500; font-size: 0.92rem; }
+    .nav-group a:hover { color: var(--text); background: var(--surface-muted); }
+    .nav-group a[aria-current="page"] { color: var(--primary); background: var(--primary-subtle); font-weight: 650; }
+    .main-content { flex: 1; min-width: 0; max-width: 1180px; margin-inline: auto; padding: clamp(1.5rem, 3.5vw, 3rem) clamp(1rem, 2.5vw, 2rem); display: flex; flex-direction: column; gap: 2rem; }
 
-    .container { max-width: 1100px; width: 100%; display: flex; flex-direction: column; gap: 2rem; }
+    /* ── Typography and blocks ──────────────────────────── */
+    .view { display: flex; flex-direction: column; gap: 1.75rem; }
+    .view > header { display: flex; flex-direction: column; gap: 0.6rem; }
+    .eyebrow { align-self: flex-start; display: inline-block; line-height: 1.5; }
+    .view h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 800; }
+    .view h2 { font-size: clamp(1.6rem, 3vw, 2rem); font-weight: 800; }
+    .view h3 { font-size: 1.05rem; font-weight: 700; }
+    .lead { color: var(--text-muted); font-size: 1.08rem; max-width: 780px; }
+    .muted { color: var(--text-muted); }
+    .small { font-size: 0.82rem; }
+    .badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.65rem; border-radius: 999px; font-size: 0.75rem; font-weight: 650; background: var(--primary-subtle); color: var(--primary); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+    .grid { display: grid; gap: 1rem; }
+    .grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    hr.sep { border: 0; border-top: 1px solid var(--border); margin: 0; }
 
-    /* ── Header ─────────────────────────────────────────────── */
-    .header-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
-    .lang-switcher { display: flex; gap: 0.25rem; background: var(--card-bg); padding: 0.25rem; border-radius: 8px; border: 1px solid var(--border-color); }
-    .lang-btn { background: transparent; border: none; color: var(--text-muted); padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
-    .lang-btn:hover { background: rgba(255, 255, 255, 0.06); transform: none; box-shadow: none; }
-    .lang-btn.active { background: var(--accent-color); color: white; }
-    .header-links { display: flex; gap: 0.5rem; }
-    .pill-link { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-color); text-decoration: none; font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); transition: border-color 0.2s; }
-    .pill-link:hover { border-color: var(--accent-color); }
-    h1 { font-size: clamp(2.2rem, 6vw, 3rem); font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
-    p.subtitle { color: var(--text-muted); font-size: 1.1rem; line-height: 1.5; max-width: 760px; }
-    .install { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
-    .install code { font-size: 0.95rem; padding: 0.55rem 0.85rem; border: 1px solid var(--border-color); }
-    .install small { color: var(--text-muted); }
+    /* ── Buttons and form controls ─────────────────────── */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.55rem 1.1rem; border-radius: 8px; font: inherit; font-weight: 600; font-size: 0.875rem; cursor: pointer; border: 1px solid var(--border); background: var(--surface-muted); color: var(--text); text-decoration: none; white-space: nowrap; transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease; }
+    .btn:hover { border-color: var(--primary); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); box-shadow: 0 4px 14px color-mix(in srgb, var(--primary) 30%, transparent); }
+    .btn.primary:hover { background: var(--primary-hover); }
+    .btn.sm { padding: 0.35rem 0.75rem; font-size: 0.82rem; }
+    .row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    input[type="number"], input[type="text"], select, textarea { background: var(--surface); border: 1px solid var(--input-border); border-radius: 8px; padding: 0.5rem 0.6rem; color: var(--text); font: inherit; font-size: 0.9rem; width: 100%; }
+    input:disabled, select:disabled { opacity: 0.5; }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--primary); }
+    input[type="range"] { width: 100%; }
+    .field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+    .field > span:first-child { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono); }
+    .hint { font-size: 0.75rem; color: var(--text-muted); }
+    .check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; cursor: pointer; }
+    .seg { display: inline-flex; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 8px; padding: 0.2rem; gap: 0.2rem; }
+    .seg button { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-weight: 600; font-size: 0.82rem; padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; }
+    .seg button[aria-pressed="true"] { background: var(--surface); color: var(--primary); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
-    nav.sections { position: sticky; top: 0.75rem; z-index: 10; display: flex; gap: 0.4rem; flex-wrap: wrap; padding: 0.4rem; background: rgba(14, 11, 22, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 12px; }
-    nav.sections a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; font-weight: 600; padding: 0.4rem 0.8rem; border-radius: 8px; }
-    nav.sections a:hover { color: #fff; background: var(--accent-soft); }
-
-    /* ── Cards ──────────────────────────────────────────────── */
-    .card { background: var(--card-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border-color); border-radius: 16px; padding: 2rem; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4); scroll-margin-top: 4.5rem; }
-    .card-title { font-size: 1.35rem; font-weight: 600; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-    .card-intro { color: var(--text-muted); font-size: 0.98rem; line-height: 1.55; margin-bottom: 1.5rem; max-width: 820px; }
-    .badge { font-size: 0.75rem; background: var(--accent-soft); color: #c084fc; padding: 0.25rem 0.65rem; border-radius: 99px; border: 1px solid rgba(168, 85, 247, 0.3); font-weight: 500; }
-
-    code { font-family: var(--mono); background: rgba(0, 0, 0, 0.4); padding: 0.15rem 0.4rem; border-radius: 4px; color: #e2e8f0; font-size: 0.88em; }
-
-    /* ── Controls ───────────────────────────────────────────── */
-    button { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); color: #fff; padding: 0.6rem 1rem; border-radius: 8px; font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer; transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
-    button:hover { background: var(--accent-color); border-color: var(--accent-color); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35); }
-    button:active { transform: translateY(0); }
-    button.primary { background: var(--accent-gradient); border-color: transparent; }
-    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #c084fc; outline-offset: 2px; }
-
-    input[type="number"], input[type="text"], select, textarea {
-      background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 0.55rem;
-      color: #fff; font-family: inherit; font-size: 0.92rem; width: 100%; transition: border-color 0.2s;
-    }
-    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent-color); }
-    input:disabled, select:disabled { opacity: 0.45; }
-    select { cursor: pointer; }
-    input[type="range"] { width: 100%; accent-color: var(--accent-color); }
-    input[type="checkbox"] { accent-color: var(--accent-color); width: 1rem; height: 1rem; }
-
-    .field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
-    .field > span, .field > label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
-    .hint { font-size: 0.75rem; color: var(--text-muted); opacity: 0.85; }
-    .check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--text-color); cursor: pointer; }
-
-    .seg { display: inline-flex; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.2rem; gap: 0.2rem; }
-    .seg button { padding: 0.35rem 0.75rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; }
-    .seg button:hover { background: rgba(255, 255, 255, 0.06); color: #fff; transform: none; box-shadow: none; }
-    .seg button[aria-pressed="true"] { background: var(--accent-color); color: #fff; }
-
-    /* ── Playground ─────────────────────────────────────────── */
-    .playground { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
-    .hero-display { display: flex; justify-content: center; align-items: center; min-height: 190px; padding: 2rem 1rem; background: var(--panel-bg); border-radius: 12px; border: 1px solid var(--border-color); box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.5); overflow: hidden; }
-    /* A filter glows around the whole counter; a text-shadow would be clipped by each digit window (see --rn-bleed). */
-    .large-counter { font-family: var(--mono); font-size: clamp(2.6rem, 7vw, 4.5rem); font-weight: 700; letter-spacing: -0.02em; color: #fff; filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.55)); }
-    .value-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin-top: 1rem; }
-    .value-input { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
-    .value-input input { flex: 1; font-family: var(--mono); }
-    .log { margin-top: 1rem; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem 0.9rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.6; color: var(--text-muted); min-height: 7.8rem; }
-    .log b { color: #c084fc; font-weight: 700; }
-    .log .end { color: #86efac; }
-    .log-title { font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.35rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; }
-
-    .groups { display: flex; flex-direction: column; gap: 1rem; }
-    fieldset.group { border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; background: rgba(255, 255, 255, 0.02); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
-    fieldset.group legend { padding: 0 0.4rem; font-size: 0.85rem; font-weight: 600; color: #c084fc; }
-    fieldset.group .wide { grid-column: 1 / -1; }
-
-    /* ── Code blocks ────────────────────────────────────────── */
-    .code-panel { margin-top: 1.5rem; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; background: rgba(8, 6, 14, 0.9); }
-    .tabs { display: flex; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid var(--border-color); overflow-x: auto; align-items: center; }
-    .tabs button { padding: 0.4rem 0.8rem; border: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; white-space: nowrap; }
-    .tabs button:hover { background: rgba(255, 255, 255, 0.06); color: #fff; transform: none; box-shadow: none; }
-    .tabs button[aria-selected="true"] { background: var(--accent-soft); color: #e9d5ff; }
+    /* ── Tabs and code ─────────────────────────────────── */
+    .tabs-container { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+    .tabs { display: flex; align-items: stretch; gap: 0; background: var(--surface-muted); border-bottom: 1px solid var(--border); overflow-x: auto; }
+    .tabs [role="tab"] { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-weight: 650; font-size: 0.88rem; padding: 0.75rem 1.1rem; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+    .tabs [role="tab"][aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); background: var(--surface); }
     .tabs .spacer { flex: 1; }
-    .tabs .copy { border: 1px solid var(--border-color); }
-    pre.code, .log, .snippet, code { font-variant-ligatures: none; }
-    pre.code { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; color: #e2e8f0; white-space: pre; tab-size: 2; }
-    .code-note { padding: 0.6rem 1.1rem; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--border-color); }
+    .tabs .btn { margin: 0.4rem; }
+    .tab-body { padding: 1rem; }
+    pre.code { margin: 0; background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.65; tab-size: 2; }
+    .code-note { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.75rem; }
+    .inline-code, td code, p code, li code { background: var(--surface-muted); border: 1px solid var(--border); padding: 0.05rem 0.35rem; border-radius: 5px; font-size: 0.85em; }
 
-    /* ── Anywhere ───────────────────────────────────────────── */
-    .toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.25rem; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
-    .mini { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
-    .mini h3 { font-size: 0.95rem; font-weight: 600; display: flex; justify-content: space-between; gap: 0.5rem; }
-    .mini h3 code { font-size: 0.75rem; color: #c084fc; }
-    .mini .stage { min-height: 64px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
-    .mini .snippet { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; word-break: break-word; }
-    .mini table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-    .mini td { padding: 0.3rem 0.2rem; border-bottom: 1px solid var(--border-color); }
-    .mini td.num { text-align: right; font-family: var(--mono); }
+    /* ── Overview ──────────────────────────────────────── */
+    .hero-stage { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; align-items: stretch; }
+    .stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: 2rem 1rem; min-height: 220px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+    .stage .live { align-self: flex-start; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+    @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+    .big-counter { font-family: var(--font-mono); font-size: clamp(2.6rem, 6.5vw, 4.4rem); font-weight: 700; color: var(--text); }
+    .stat { display: flex; flex-direction: column; gap: 0.25rem; }
+    .stat .n { font-family: var(--font-mono); font-size: 1.6rem; font-weight: 600; line-height: 1; min-height: 1.6rem; }
+    .stat .l { color: var(--text-muted); font-size: 0.85rem; }
+    .feature h3 { margin-bottom: 0.35rem; }
+    .feature p { color: var(--text-muted); font-size: 0.9rem; }
+    .feature .ico { font-size: 1.3rem; margin-bottom: 0.5rem; }
+
+    /* ── Playground ────────────────────────────────────── */
+    .playground { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .value-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+    .log { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 0.9rem; font-family: var(--font-mono); font-size: 0.76rem; line-height: 1.6; color: var(--text-muted); min-height: 7.4rem; }
+    .log b { color: var(--primary); font-weight: 600; }
+    .log .end { color: var(--emerald); }
+    .log-title { font-family: var(--font-sans); font-size: 0.8rem; font-weight: 700; color: var(--text); margin-bottom: 0.35rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; }
+    fieldset.group { margin: 0; border: 1px solid var(--border); border-radius: 12px; padding: 1rem; background: var(--surface); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
+    fieldset.group legend { padding: 0 0.4rem; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--primary); }
+    .wide { grid-column: 1 / -1; }
+
+    /* ── Gallery ───────────────────────────────────────── */
+    .mini { display: flex; flex-direction: column; gap: 0.75rem; }
+    .mini h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; font-size: 0.95rem; }
+    .tag { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; color: var(--primary); }
+    .mini .slot { min-height: 66px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; border-radius: 8px; background: var(--surface-muted); padding: 0.75rem; }
+    .snippet { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; word-break: break-word; }
+    .mini table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .mini td { padding: 0.25rem 0.2rem; border-bottom: 1px solid var(--border); }
+    .mini td.num { text-align: right; font-family: var(--font-mono); }
     .cart { display: inline-flex; align-items: center; gap: 0.5rem; }
-    .cart .count { background: #ef4444; color: #fff; border-radius: 99px; padding: 0.05rem 0.55rem; font-size: 0.85rem; font-weight: 700; font-family: var(--mono); }
-    .mini input, .mini textarea, .mini select { font-family: var(--mono); text-align: center; }
-    .mini textarea { resize: none; text-align: left; }
+    .cart .count { background: var(--rose); color: #fff; border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.82rem; font-weight: 700; font-family: var(--font-mono); }
+    .mini .slot input, .mini .slot textarea, .mini .slot select { font-family: var(--font-mono); font-size: 0.88rem; text-align: center; }
+    .mini .slot select { text-align: left; }
+    .mini .slot textarea { resize: none; text-align: left; }
     .mini svg { width: 100%; max-width: 200px; }
+    .fmt-value { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; }
 
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
-    .stat { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; text-align: center; }
-    .stat .n { font-family: var(--mono); font-size: 2rem; font-weight: 700; }
-    .stat .l { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem; }
-
-    /* ── Styling ────────────────────────────────────────────── */
-    .styling { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
-    .style-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem; padding: 2rem 1rem; background: var(--panel-bg); border-radius: 12px; border: 1px solid var(--border-color); min-height: 240px; }
-    #styleCounter { font-size: clamp(2.6rem, 7vw, 4rem); font-weight: 700; color: #fff; }
-    #styleCounter.glow { text-shadow: 0 0 18px rgba(192, 132, 252, 0.95), 0 0 42px rgba(139, 92, 246, 0.7); }
+    /* ── Styling lab ───────────────────────────────────── */
+    .lab { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    #styleCounter { font-size: clamp(2.6rem, 6vw, 4rem); font-weight: 700; color: var(--text); }
+    #styleCounter.glow { text-shadow: 0 0 16px color-mix(in srgb, var(--primary) 90%, transparent), 0 0 36px var(--primary); }
     #styleCounter.gradient { color: transparent; }
-    .style-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
 
-    /* ── Frameworks ─────────────────────────────────────────── */
-    .live-islands { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
-    .island { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    .island .label { font-size: 0.85rem; color: var(--text-muted); }
-    .island .big { font-family: var(--mono); font-size: 1.8rem; font-weight: 700; }
-    .island .btns { display: flex; gap: 0.4rem; }
+    /* ── Tables ────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    table.ref { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    table.ref th, table.ref td { text-align: left; padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    table.ref th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); background: var(--surface-muted); }
+    table.ref tr:last-child td { border-bottom: 0; }
+    table.ref td:first-child { white-space: nowrap; }
 
-    /* ── Performance ────────────────────────────────────────── */
-    .stress-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 0.5rem; max-height: 300px; overflow-y: auto; padding: 0.75rem; background: var(--panel-bg); border-radius: 10px; border: 1px solid var(--border-color); }
-    .stress-cell { background: rgba(255, 255, 255, 0.03); padding: 0.5rem; border-radius: 6px; text-align: center; font-family: var(--mono); font-size: 1.1rem; border: 1px solid rgba(255, 255, 255, 0.04); }
+    /* ── Frameworks and performance ────────────────────── */
+    .island { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .island .label { font-size: 0.82rem; color: var(--text-muted); }
+    .island .big { font-family: var(--font-mono); font-size: 1.8rem; font-weight: 700; }
+    .stress-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 0.5rem; max-height: 340px; overflow-y: auto; padding: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+    .stress-cell { background: var(--surface-muted); padding: 0.45rem; border-radius: 6px; text-align: center; font-family: var(--font-mono); font-size: 1.05rem; }
 
-    footer { color: var(--text-muted); font-size: 0.85rem; text-align: center; line-height: 1.6; }
-    footer a { color: #c084fc; }
+    /* ── Footer ────────────────────────────────────────── */
+    .site-footer { margin-top: 1rem; padding-top: 1.75rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .site-footer .links { display: flex; gap: 1rem; flex-wrap: wrap; }
 
-    @media (max-width: 900px) {
-      .playground, .styling { grid-template-columns: minmax(0, 1fr); }
+    /* ── Responsive ────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      .hero-stage, .playground, .lab { grid-template-columns: minmax(0, 1fr); }
+      .install-chip, .site-link { display: none !important; }
     }
-    @media (max-width: 520px) {
-      .card { padding: 1.25rem; }
-      fieldset.group, .style-controls { grid-template-columns: minmax(0, 1fr); }
-      .value-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 860px) {
+      .menu-btn { display: inline-flex; }
+      .sidebar { position: fixed; z-index: 25; left: 0; top: var(--header-height); transform: translateX(-100%); transition: transform 0.25s ease; background: var(--bg); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); }
+      .sidebar.open { transform: none; }
+    }
+    @media (max-width: 560px) {
+      .brand-name { display: none; }
+      fieldset.group { grid-template-columns: minmax(0, 1fr); }
+      .value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .app-header { gap: 0.5rem; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="header-top">
-        <div class="lang-switcher" role="group" aria-label="Language">
-          <button id="btnLangEN" class="lang-btn active" type="button">EN</button>
-          <button id="btnLangIT" class="lang-btn" type="button">IT</button>
-        </div>
-        <div class="header-links">
-          <a class="pill-link" href="https://www.npmjs.com/package/rolling-number" target="_blank" rel="noopener noreferrer">npm</a>
-          <a class="pill-link" href="https://github.com/ErlonRr/rolling-number-js" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-      </div>
-      <h1>rolling-number</h1>
-      <p class="subtitle" data-i18n="subtitle">An animated, odometer-style number counter. Zero dependencies, one API for the Web Component, vanilla JS, React, Vue, Angular and Svelte — and it works inside any element: text, buttons, table cells, inputs, textareas and SVG.</p>
-      <div class="install">
-        <code>npm i rolling-number</code>
-        <small data-i18n="installNote">Styles are injected automatically: no CSS import needed.</small>
-      </div>
-    </header>
+  <div class="bg-matrix" aria-hidden="true"></div>
 
-    <nav class="sections" aria-label="Sections">
-      <a href="#playground" data-i18n="navPlayground">Playground</a>
-      <a href="#anywhere" data-i18n="navAnywhere">Any element</a>
-      <a href="#styling" data-i18n="navStyling">Styling</a>
-      <a href="#frameworks" data-i18n="navFrameworks">Frameworks</a>
-      <a href="#performance" data-i18n="navPerformance">Performance</a>
+  <header class="app-header">
+    <button type="button" class="nav-btn icon menu-btn" id="menuBtn" aria-label="Menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+    <a class="brand" href="#overview"><span class="logo" aria-hidden="true">42</span><span class="brand-name">Rolling Number</span><span class="badge">v1.3</span></a>
+    <div class="header-actions">
+      <button type="button" class="nav-btn install-chip" data-copy="pnpm add rolling-number" aria-label="Copy the install command"><code>pnpm add rolling-number</code><span aria-hidden="true">⧉</span></button>
+      <a class="nav-btn site-link" href="https://erlonrru.com" target="_blank" rel="noopener noreferrer"><span class="dot"></span>erlonrru.com</a>
+      <a class="nav-btn icon" href="https://www.npmjs.com/package/rolling-number" target="_blank" rel="noopener noreferrer" aria-label="npm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2v20h20V2H2zm16.5 16.5h-3v-9h-3v9h-6v-13h12v13z"/></svg></a>
+      <a class="nav-btn icon" href="https://github.com/ErlonRr/rolling-number-js" target="_blank" rel="noopener noreferrer" aria-label="GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z"/></svg></a>
+      <select class="nav-btn" id="langSelect" aria-label="Language" style="width:auto">
+        <option value="en">🇬🇧 EN</option>
+        <option value="it">🇮🇹 IT</option>
+      </select>
+      <button type="button" class="nav-btn icon" id="themeToggle" aria-label="Dark theme" aria-pressed="false">🌙</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar" aria-label="Documentation">
+      <div class="nav-group">
+        <p class="nav-title" data-i18n="navGettingStarted">Getting started</p>
+        <a href="#overview" data-i18n="navOverview">Overview & features</a>
+        <a href="#install" data-i18n="navInstall">Installation & quick start</a>
+      </div>
+      <div class="nav-group">
+        <p class="nav-title" data-i18n="navTry">Try it</p>
+        <a href="#playground" data-i18n="navPlayground">Live playground</a>
+        <a href="#anywhere" data-i18n="navAnywhere">Any element</a>
+        <a href="#formatting" data-i18n="navFormatting">Number formatting</a>
+        <a href="#events" data-i18n="navEvents">Events & promises</a>
+      </div>
+      <div class="nav-group">
+        <p class="nav-title" data-i18n="navTheming">Theming</p>
+        <a href="#styling" data-i18n="navStyling">CSS variables lab</a>
+      </div>
+      <div class="nav-group">
+        <p class="nav-title" data-i18n="navGuides">Framework guides</p>
+        <a href="#frameworks" data-i18n="navFrameworks">React, Vue, Angular, Svelte</a>
+      </div>
+      <div class="nav-group">
+        <p class="nav-title" data-i18n="navReference">Reference</p>
+        <a href="#options" data-i18n="navOptions">Options</a>
+        <a href="#api" data-i18n="navApi">API & events</a>
+        <a href="#performance" data-i18n="navPerformance">Performance</a>
+      </div>
     </nav>
 
-    <!-- ── 1. Playground ───────────────────────────────────── -->
-    <section class="card" id="playground">
-      <div class="card-title"><span data-i18n="pgTitle">Playground</span><span class="badge">&lt;rolling-number&gt;</span></div>
-      <p class="card-intro" data-i18n="pgIntro">Change a setting and the counter updates right away. The code below is generated from your settings, ready to copy for the framework you use.</p>
+    <main class="main-content" id="main">
 
-      <div class="playground">
-        <div>
-          <div class="hero-display">
-            <rolling-number id="heroCounter" class="large-counter" value="1234" pad="4"></rolling-number>
+      <!-- ── Overview ──────────────────────────────────── -->
+      <section class="view" data-view="overview">
+        <header>
+          <span class="badge eyebrow">Web Component · React · Vue · Angular · Svelte · <span data-i18n="zeroDeps">zero dependencies</span></span>
+          <h1>Rolling Number</h1>
+          <p class="lead" data-i18n="heroLead">An animated, odometer-style number counter. Give it a value and it rolls there — inside any element: text, buttons, table cells, inputs, textareas and SVG.</p>
+        </header>
+        <div class="hero-stage">
+          <div class="stage">
+            <span class="badge live"><span class="live-dot"></span> <span data-i18n="liveBadge">LIVE · simulated revenue</span></span>
+            <rolling-number id="heroCounter" class="big-counter" value="12480.5" locale="en-US" format='{"style":"currency","currency":"USD"}'></rolling-number>
+            <div class="row">
+              <button type="button" class="btn sm" id="heroPause" data-i18n="pause">Pause</button>
+              <button type="button" class="btn sm" id="heroJump" data-i18n="bigJump">Big jump</button>
+              <button type="button" class="btn sm" id="heroDrop" data-i18n="drop">Drop</button>
+            </div>
           </div>
-          <div class="value-controls">
-            <button type="button" data-step="1">+ 1</button>
-            <button type="button" data-step="100">+ 100</button>
-            <button type="button" data-step="-100">− 100</button>
-            <button type="button" id="btnRand" data-i18n="btnRandom">Random</button>
-            <button type="button" id="btnNeg" data-i18n="btnNegative">Negative</button>
-            <button type="button" id="btnZero">0</button>
-          </div>
-          <form class="value-input" id="valueForm">
-            <input type="number" id="valueInput" step="any" value="1234" aria-label="Value" />
-            <button type="submit" class="primary" data-i18n="btnSet">Set value</button>
-          </form>
-          <div class="log" aria-live="off">
-            <div class="log-title"><span data-i18n="logTitle">Events (rn-start / rn-end)</span><span id="logPromise"></span></div>
-            <div id="eventLog"></div>
+          <div class="grid" style="grid-template-columns: repeat(2, minmax(0, 1fr))">
+            <div class="card stat"><span class="n" id="statDeps">0</span><span class="l" data-i18n="statDeps">runtime dependencies</span></div>
+            <div class="card stat"><span class="n" id="statIntegrations"></span><span class="l" data-i18n="statIntegrations">integrations</span></div>
+            <div class="card stat"><span class="n" id="statOptions"></span><span class="l" data-i18n="statOptions">options, one API</span></div>
+            <div class="card stat"><span class="n" id="statTests"></span><span class="l" data-i18n="statTests">automated tests</span></div>
           </div>
         </div>
+        <div class="row">
+          <a class="btn primary" href="#playground" data-i18n="ctaPlayground">Open the playground</a>
+          <a class="btn" href="#anywhere" data-i18n="ctaAnywhere">See it in any element</a>
+          <a class="btn" href="#frameworks" data-i18n="ctaGuides">Framework guides</a>
+        </div>
+        <hr class="sep" />
+        <div class="grid cols-3">
+          <div class="card feature"><div class="ico">🎰</div><h3 data-i18n="f1t">Continuous odometer</h3><p data-i18n="f1d">Counts through the values in between; fast digits spin as reels, 9 → 0 always rolls forward, and a new value mid-animation continues from what is on screen.</p></div>
+          <div class="card feature"><div class="ico">🧩</div><h3 data-i18n="f2t">Any element</h3><p data-i18n="f2d">Digit columns inside containers; animated text inside inputs, textareas, options and SVG text. Your other children are never touched.</p></div>
+          <div class="card feature"><div class="ico">🌍</div><h3 data-i18n="f3t">Real number formatting</h3><p data-i18n="f3d">Currencies, percent, units, locales and native digits through Intl, plus 99+ badges, prefixes and suffixes.</p></div>
+          <div class="card feature"><div class="ico">📡</div><h3 data-i18n="f4t">Events & promises</h3><p data-i18n="f4d">rn-start / rn-end events everywhere, and setValue() resolves when the animation ends.</p></div>
+          <div class="card feature"><div class="ico">♿</div><h3 data-i18n="f5t">Accessible</h3><p data-i18n="f5d">An accessible name with the real value, optional live announcements, and instant changes under reduced motion.</p></div>
+          <div class="card feature"><div class="ico">🧠</div><h3 data-i18n="f6t">Typed, SSR-ready, styles included</h3><p data-i18n="f6d">Typed options in every IDE, server-rendered fallbacks, and a stylesheet injected automatically (CSP-friendly).</p></div>
+        </div>
+      </section>
 
-        <div class="groups">
-          <fieldset class="group">
-            <legend data-i18n="grpBasics">Basics</legend>
-            <div class="field wide">
-              <span data-i18n="optMotion">Motion</span>
-              <div class="seg" role="group" aria-label="Motion">
-                <button type="button" data-motion="count" aria-pressed="true" data-i18n="motionCount">Count through values</button>
-                <button type="button" data-motion="roll" aria-pressed="false" data-i18n="motionRoll">Roll each digit</button>
+      <!-- ── Install ───────────────────────────────────── -->
+      <section class="view" data-view="install" hidden>
+        <header>
+          <h2 data-i18n="installTitle">Installation & quick start</h2>
+          <p class="lead" data-i18n="installLead">Install the package; the stylesheet is injected automatically the first time a counter is created.</p>
+        </header>
+        <div class="tabs-container" data-tabs="pm">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="pnpm" aria-selected="true">pnpm</button>
+            <button type="button" role="tab" data-tab="npm" aria-selected="false">npm</button>
+            <button type="button" role="tab" data-tab="yarn" aria-selected="false">yarn</button>
+            <button type="button" role="tab" data-tab="cdn" aria-selected="false">CDN</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn sm" data-copy-from="pmOut" data-i18n="copy">Copy</button>
+          </div>
+          <div class="tab-body"><pre class="code" id="pmOut"></pre></div>
+        </div>
+        <h3 data-i18n="quickStart">Quick start</h3>
+        <div class="tabs-container" data-tabs="qs">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="html" aria-selected="true">HTML</button>
+            <button type="button" role="tab" data-tab="react" aria-selected="false">React</button>
+            <button type="button" role="tab" data-tab="vue" aria-selected="false">Vue</button>
+            <button type="button" role="tab" data-tab="angular" aria-selected="false">Angular</button>
+            <button type="button" role="tab" data-tab="svelte" aria-selected="false">Svelte</button>
+            <button type="button" role="tab" data-tab="js" aria-selected="false">Vanilla JS</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn sm" data-copy-from="qsOut" data-i18n="copy">Copy</button>
+          </div>
+          <div class="tab-body"><pre class="code" id="qsOut"></pre></div>
+        </div>
+        <div class="grid cols-3">
+          <a class="card" href="#playground" style="text-decoration:none;color:inherit"><h3 data-i18n="nextPlayground">Playground →</h3><p class="muted small" data-i18n="nextPlaygroundD">Pick options and copy the code for your framework.</p></a>
+          <a class="card" href="#options" style="text-decoration:none;color:inherit"><h3 data-i18n="nextOptions">All options →</h3><p class="muted small" data-i18n="nextOptionsD">Every option with its default, in one table.</p></a>
+          <a class="card" href="#frameworks" style="text-decoration:none;color:inherit"><h3 data-i18n="nextGuides">Framework guides →</h3><p class="muted small" data-i18n="nextGuidesD">Props, events and SSR for each framework.</p></a>
+        </div>
+      </section>
+
+      <!-- ── Playground ────────────────────────────────── -->
+      <section class="view" data-view="playground" hidden>
+        <header>
+          <h2 data-i18n="pgTitle">Live playground</h2>
+          <p class="lead" data-i18n="pgLead">Change a setting and the counter updates right away. The code below is generated from your settings, ready to copy.</p>
+        </header>
+        <div class="playground">
+          <div style="display:flex;flex-direction:column;gap:0.85rem">
+            <div class="stage" style="min-height:190px">
+              <rolling-number id="pgCounter" class="big-counter" value="1234" pad="4"></rolling-number>
+            </div>
+            <div class="value-grid">
+              <button type="button" class="btn" data-step="1">+ 1</button>
+              <button type="button" class="btn" data-step="100">+ 100</button>
+              <button type="button" class="btn" data-step="-100">− 100</button>
+              <button type="button" class="btn" id="btnRand" data-i18n="random">Random</button>
+              <button type="button" class="btn" id="btnNeg" data-i18n="negative">Negative</button>
+              <button type="button" class="btn" id="btnZero">0</button>
+            </div>
+            <form class="row" id="valueForm" style="flex-wrap:nowrap">
+              <input type="number" id="valueInput" step="any" value="1234" aria-label="Value" style="font-family:var(--font-mono)" />
+              <button type="submit" class="btn primary" data-i18n="setValue">Set value</button>
+            </form>
+            <div class="log">
+              <div class="log-title"><span data-i18n="logTitle">Events (rn-start / rn-end)</span><span id="logPromise"></span></div>
+              <div id="eventLog"></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:1rem">
+            <fieldset class="group">
+              <legend data-i18n="grpBasics">Basics</legend>
+              <div class="field wide">
+                <span>interpolate</span>
+                <div class="seg" role="group" aria-label="Motion">
+                  <button type="button" data-motion="count" aria-pressed="true" data-i18n="motionCount">Count through values</button>
+                  <button type="button" data-motion="roll" aria-pressed="false" data-i18n="motionRoll">Roll each digit</button>
+                </div>
               </div>
+              <label class="field"><span>pad</span><input type="number" id="optPad" min="1" max="12" value="4" /><span class="hint" data-i18n="hintPad">Minimum digits (leading zeros)</span></label>
+              <label class="field"><span>duration (ms)</span><input type="number" id="optDuration" min="0" max="5000" step="50" placeholder="auto" /><span class="hint" data-i18n="hintDuration">Empty = automatic</span></label>
+              <label class="field"><span>max</span><input type="number" id="optMax" min="0" placeholder="—" /><span class="hint" data-i18n="hintMax">Display limit, e.g. 99</span></label>
+              <label class="field"><span>overflowSuffix</span><input type="text" id="optOverflow" placeholder="+" maxlength="4" /><span class="hint" data-i18n="hintOverflow">Shown past max: “99+”</span></label>
+              <label class="field wide"><span>easing</span>
+                <select id="optEasing">
+                  <option value="" data-i18n="auto">auto</option>
+                  <option>ease-out-cubic</option><option>odometer</option><option>ease-out-expo</option><option>ease-in-out</option><option>linear</option>
+                  <option value="cubic-bezier(0.34, 1.56, 0.64, 1)">cubic-bezier(0.34, 1.56, 0.64, 1)</option>
+                </select>
+              </label>
+            </fieldset>
+            <fieldset class="group">
+              <legend data-i18n="grpFormat">Format</legend>
+              <label class="field"><span>locale</span>
+                <select id="optLocale"><option value="" data-i18n="localeNone">none (plain digits)</option><option>en-US</option><option>it-IT</option><option>de-DE</option><option>fr-FR</option><option>ja-JP</option><option>hi-IN</option><option>ar-EG</option></select>
+              </label>
+              <label class="field"><span>format.style</span>
+                <select id="optStyle"><option value="" data-i18n="styleNumber">number</option><option>currency</option><option>percent</option><option>unit</option></select>
+              </label>
+              <label class="field"><span>format.currency</span>
+                <select id="optCurrency" disabled><option>EUR</option><option>USD</option><option>GBP</option><option>JPY</option><option>CHF</option></select>
+              </label>
+              <label class="field"><span>format.unit</span>
+                <select id="optUnit" disabled><option>kilometer-per-hour</option><option>celsius</option><option>kilogram</option><option>megabyte</option><option>liter</option></select>
+              </label>
+              <label class="field"><span>decimals</span><input type="number" id="optDecimals" min="0" max="6" placeholder="auto" /></label>
+              <div class="field"><span>prefixText / suffixText</span><div class="row" style="flex-wrap:nowrap"><input type="text" id="optPrefix" placeholder="≈ " aria-label="prefixText" /><input type="text" id="optSuffix" placeholder=" pts" aria-label="suffixText" /></div></div>
+              <p class="hint wide" id="percentHint" hidden data-i18n="hintPercent">Percent multiplies by 100: value 0.25 shows 25%.</p>
+            </fieldset>
+            <fieldset class="group">
+              <legend data-i18n="grpA11y">Accessibility</legend>
+              <label class="check wide"><input type="checkbox" id="optLive" /> <span data-i18n="optLive">Announce settled values to screen readers (live: 'polite')</span></label>
+              <label class="field wide"><span>label</span><input type="text" id="optLabel" placeholder="{value} points" /><span class="hint" data-i18n="hintLabel">Accessible name; {value} is replaced by the formatted value</span></label>
+            </fieldset>
+          </div>
+        </div>
+        <div class="tabs-container" data-tabs="code">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="html" aria-selected="true">HTML</button>
+            <button type="button" role="tab" data-tab="js" aria-selected="false">JavaScript</button>
+            <button type="button" role="tab" data-tab="react" aria-selected="false">React</button>
+            <button type="button" role="tab" data-tab="vue" aria-selected="false">Vue</button>
+            <button type="button" role="tab" data-tab="angular" aria-selected="false">Angular</button>
+            <button type="button" role="tab" data-tab="svelte" aria-selected="false">Svelte</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn sm" data-copy-from="codeOut" data-i18n="copy">Copy</button>
+          </div>
+          <div class="tab-body"><pre class="code" id="codeOut"></pre><p class="code-note" id="codeNote"></p></div>
+        </div>
+      </section>
+
+      <!-- ── Any element ───────────────────────────────── -->
+      <section class="view" data-view="anywhere" hidden>
+        <header>
+          <h2 data-i18n="anyTitle">Works in any element</h2>
+          <p class="lead" data-i18n="anyLead">The same counter attaches to the element you already have. Containers get animated digit columns; form fields, &lt;option&gt; and SVG text are animated as text, so the value stays a normal value.</p>
+        </header>
+        <div class="row">
+          <button type="button" class="btn primary" id="btnAnyNew" data-i18n="newValues">New values</button>
+          <label class="check"><input type="checkbox" id="anyAuto" /> <span data-i18n="autoplay">Autoplay</span></label>
+        </div>
+        <div class="grid cols-4">
+          <div class="card mini"><h3><span data-i18n="anyInline">Inline text</span><span class="tag">&lt;span&gt;</span></h3><div class="slot"><p><span data-i18n="anyInlineA">You have</span> <span id="anyInline"></span> <span data-i18n="anyInlineB">new messages</span></p></div><div class="snippet">{ max: 99, overflowSuffix: '+' }</div></div>
+          <div class="card mini"><h3><span data-i18n="anyButton">Button badge</span><span class="tag">&lt;button&gt;</span></h3><div class="slot"><button type="button" class="btn cart"><span data-i18n="anyCart">Cart</span> <span class="count" id="anyCart"></span></button></div><div class="snippet">rollingNumber(badge, { value: 3 })</div></div>
+          <div class="card mini"><h3><span data-i18n="anyTable">Table cells</span><span class="tag">&lt;td&gt;</span></h3><div class="slot"><table><tbody><tr><td data-i18n="anyRevenue">Revenue</td><td class="num" id="anyRevenue"></td></tr><tr><td data-i18n="anyGrowth">Growth</td><td class="num" id="anyGrowth"></td></tr></tbody></table></div><div class="snippet">{ locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }</div></div>
+          <div class="card mini"><h3><span>Input</span><span class="tag">&lt;input readonly&gt;</span></h3><div class="slot"><input type="text" readonly id="anyInput" aria-label="Distance" /></div><div class="snippet">{ locale: 'en-US', format: { style: 'unit', unit: 'kilometer' } }</div></div>
+          <div class="card mini"><h3><span>Textarea</span><span class="tag">&lt;textarea&gt;</span></h3><div class="slot"><textarea readonly rows="2" id="anyTextarea" aria-label="Total"></textarea></div><div class="snippet">{ prefixText: 'Total: ', suffixText: ' items' }</div></div>
+          <div class="card mini"><h3><span data-i18n="anyOption">Select option</span><span class="tag">&lt;option&gt;</span></h3><div class="slot"><select aria-label="Seats"><option id="anyOption"></option></select></div><div class="snippet">{ prefixText: 'Seats left: ' }</div></div>
+          <div class="card mini"><h3><span data-i18n="anySvg">SVG text</span><span class="tag">&lt;text&gt;</span></h3><div class="slot"><svg viewBox="0 0 200 90" role="img" aria-label="Temperature"><rect x="1" y="1" width="198" height="88" rx="14" fill="none" stroke="currentColor" stroke-opacity="0.25" /><text id="anySvg" x="100" y="58" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="32" font-weight="700"></text></svg></div><div class="snippet">{ format: { style: 'unit', unit: 'celsius' }, decimals: 1 }</div></div>
+          <div class="card mini"><h3><span data-i18n="anyVisible">When visible</span><span class="tag">trigger</span></h3><div class="slot"><span class="fmt-value" id="anyVisibleN"></span></div><div class="snippet">{ from: 0, trigger: 'visible' }</div></div>
+        </div>
+      </section>
+
+      <!-- ── Formatting ────────────────────────────────── -->
+      <section class="view" data-view="formatting" hidden>
+        <header>
+          <h2 data-i18n="fmtTitle">Number formatting</h2>
+          <p class="lead" data-i18n="fmtLead">Setting locale or format switches on Intl: separators, currency symbols, units and native digits. The digits still roll; the symbols stay in place.</p>
+        </header>
+        <div class="row"><button type="button" class="btn primary" id="btnFmtShuffle" data-i18n="shuffle">Shuffle values</button></div>
+        <div class="grid cols-3" id="fmtGrid"></div>
+      </section>
+
+      <!-- ── Events ────────────────────────────────────── -->
+      <section class="view" data-view="events" hidden>
+        <header>
+          <h2 data-i18n="evTitle">Events & promises</h2>
+          <p class="lead" data-i18n="evLead">Every change fires rn-start and rn-end on the host (they bubble), and setValue() returns a promise that resolves when the animation ends.</p>
+        </header>
+        <div class="grid cols-2">
+          <div class="stage">
+            <rolling-number id="evCounter" class="big-counter" value="100"></rolling-number>
+            <div class="row">
+              <button type="button" class="btn" data-ev="count">setValue(v)</button>
+              <button type="button" class="btn" data-ev="roll">setValue(v, false)</button>
+              <button type="button" class="btn" data-ev="none">{ motion: 'none' }</button>
+              <button type="button" class="btn" data-ev="twice" data-i18n="evTwice">Two values fast</button>
             </div>
-            <label class="field"><span>pad</span><input type="number" id="optPad" min="1" max="12" value="4" /><span class="hint" data-i18n="hintPad">Minimum digits (leading zeros)</span></label>
-            <label class="field"><span>duration (ms)</span><input type="number" id="optDuration" min="0" max="5000" step="50" placeholder="auto" /><span class="hint" data-i18n="hintDuration">Empty = automatic</span></label>
-            <label class="field"><span>max</span><input type="number" id="optMax" min="0" placeholder="—" /><span class="hint" data-i18n="hintMax">Display limit, e.g. 99</span></label>
-            <label class="field"><span>overflowSuffix</span><input type="text" id="optOverflow" placeholder="+" maxlength="4" /><span class="hint" data-i18n="hintOverflow">Shown past max: “99+”</span></label>
-            <label class="field wide"><span>easing</span>
-              <select id="optEasing">
-                <option value="" data-i18n="easingAuto">auto</option>
-                <option>ease-out-cubic</option>
-                <option>odometer</option>
-                <option>ease-out-expo</option>
-                <option>ease-in-out</option>
-                <option>linear</option>
-                <option value="cubic-bezier(0.34, 1.56, 0.64, 1)">cubic-bezier(0.34, 1.56, 0.64, 1)</option>
-              </select>
-            </label>
-          </fieldset>
-
-          <fieldset class="group">
-            <legend data-i18n="grpFormat">Format</legend>
-            <label class="field"><span>locale</span>
-              <select id="optLocale">
-                <option value="" data-i18n="localeNone">none (plain digits)</option>
-                <option>en-US</option>
-                <option>it-IT</option>
-                <option>de-DE</option>
-                <option>fr-FR</option>
-                <option>ja-JP</option>
-                <option>hi-IN</option>
-                <option>ar-EG</option>
-              </select>
-            </label>
-            <label class="field"><span>format.style</span>
-              <select id="optStyle">
-                <option value="" data-i18n="styleNumber">number</option>
-                <option value="currency">currency</option>
-                <option value="percent">percent</option>
-                <option value="unit">unit</option>
-              </select>
-            </label>
-            <label class="field"><span>format.currency</span>
-              <select id="optCurrency" disabled>
-                <option>EUR</option><option>USD</option><option>GBP</option><option>JPY</option><option>CHF</option>
-              </select>
-            </label>
-            <label class="field"><span>format.unit</span>
-              <select id="optUnit" disabled>
-                <option>kilometer-per-hour</option><option>celsius</option><option>kilogram</option><option>megabyte</option><option>liter</option>
-              </select>
-            </label>
-            <label class="field"><span>decimals</span><input type="number" id="optDecimals" min="0" max="6" placeholder="auto" /><span class="hint" data-i18n="hintDecimals">Fixed fraction digits</span></label>
-            <label class="field"><span>prefixText / suffixText</span>
-              <span style="display:flex; gap:0.4rem"><input type="text" id="optPrefix" placeholder="≈ " aria-label="prefixText" /><input type="text" id="optSuffix" placeholder=" pts" aria-label="suffixText" /></span>
-            </label>
-            <p class="wide hint" id="percentHint" hidden data-i18n="hintPercent">Percent multiplies by 100: value 0.25 shows 25%.</p>
-          </fieldset>
-
-          <fieldset class="group">
-            <legend data-i18n="grpA11y">Accessibility</legend>
-            <label class="check wide"><input type="checkbox" id="optLive" /> <span data-i18n="optLive">Announce settled values to screen readers (live: 'polite')</span></label>
-            <label class="field wide"><span>label</span><input type="text" id="optLabel" placeholder="{value} points" /><span class="hint" data-i18n="hintLabel">Accessible name; {value} is replaced by the formatted value</span></label>
-          </fieldset>
-        </div>
-      </div>
-
-      <div class="code-panel" id="codePanel">
-        <div class="tabs" role="tablist" aria-label="Code">
-          <button type="button" role="tab" data-tab="html" aria-selected="true">HTML</button>
-          <button type="button" role="tab" data-tab="js" aria-selected="false">JavaScript</button>
-          <button type="button" role="tab" data-tab="react" aria-selected="false">React</button>
-          <button type="button" role="tab" data-tab="vue" aria-selected="false">Vue</button>
-          <button type="button" role="tab" data-tab="angular" aria-selected="false">Angular</button>
-          <button type="button" role="tab" data-tab="svelte" aria-selected="false">Svelte</button>
-          <span class="spacer"></span>
-          <button type="button" class="copy" id="btnCopy" data-i18n="btnCopy">Copy</button>
-        </div>
-        <pre class="code" id="codeOut"></pre>
-        <div class="code-note" id="codeNote"></div>
-      </div>
-    </section>
-
-    <!-- ── 2. Any element ─────────────────────────────────── -->
-    <section class="card" id="anywhere">
-      <div class="card-title"><span data-i18n="anyTitle">Works in any element</span><span class="badge">span · button · td · input · textarea · option · svg</span></div>
-      <p class="card-intro" data-i18n="anyIntro">The same counter attaches to whatever element you already have. Containers get animated digit columns; form fields, &lt;option&gt; and SVG text are animated as text, so the value stays a normal value (read-only or uncontrolled fields are recommended).</p>
-      <div class="toolbar">
-        <button type="button" class="primary" id="btnAnyNew" data-i18n="btnNewValues">New values</button>
-        <label class="check"><input type="checkbox" id="anyAuto" /> <span data-i18n="autoplay">Autoplay</span></label>
-      </div>
-      <div class="cards" id="anyCards">
-        <div class="mini">
-          <h3><span data-i18n="anyInline">Inline text</span><code>&lt;span&gt;</code></h3>
-          <div class="stage"><p><span data-i18n="anyInlineA">You have</span> <span id="anyInline"></span> <span data-i18n="anyInlineB">new messages</span></p></div>
-          <div class="snippet">rollingNumber(span, { value, max: 99, overflowSuffix: '+' })</div>
-        </div>
-        <div class="mini">
-          <h3><span data-i18n="anyButton">Button badge</span><code>&lt;button&gt;</code></h3>
-          <div class="stage"><button type="button" class="cart"><span data-i18n="anyCart">Cart</span> <span class="count" id="anyCart"></span></button></div>
-          <div class="snippet">rollingNumber(badge, { value: 3 })</div>
-        </div>
-        <div class="mini">
-          <h3><span data-i18n="anyTable">Table cell</span><code>&lt;td&gt;</code></h3>
-          <div class="stage">
-            <table><tbody>
-              <tr><td data-i18n="anyRevenue">Revenue</td><td class="num" id="anyRevenue"></td></tr>
-              <tr><td data-i18n="anyGrowth">Growth</td><td class="num" id="anyGrowth"></td></tr>
-            </tbody></table>
           </div>
-          <div class="snippet">{ locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }</div>
+          <div class="log" style="min-height:220px"><div class="log-title"><span data-i18n="logTitle">Events (rn-start / rn-end)</span></div><div id="evLog"></div></div>
         </div>
-        <div class="mini">
-          <h3><span data-i18n="anyInput">Input</span><code>&lt;input readonly&gt;</code></h3>
-          <div class="stage"><input type="text" readonly id="anyInput" aria-label="Distance" /></div>
-          <div class="snippet">{ locale: 'en-US', format: { style: 'unit', unit: 'kilometer' } }</div>
-        </div>
-        <div class="mini">
-          <h3><span data-i18n="anyTextarea">Textarea</span><code>&lt;textarea&gt;</code></h3>
-          <div class="stage"><textarea readonly rows="2" id="anyTextarea" aria-label="Total"></textarea></div>
-          <div class="snippet">{ prefixText: 'Total: ', suffixText: ' items' }</div>
-        </div>
-        <div class="mini">
-          <h3><span data-i18n="anyOption">Select option</span><code>&lt;option&gt;</code></h3>
-          <div class="stage"><select aria-label="Seats"><option id="anyOption"></option></select></div>
-          <div class="snippet">{ prefixText: 'Seats left: ' }</div>
-        </div>
-        <div class="mini">
-          <h3><span data-i18n="anySvg">SVG text</span><code>&lt;text&gt;</code></h3>
-          <div class="stage">
-            <svg viewBox="0 0 200 90" role="img" aria-label="Temperature gauge">
-              <rect x="1" y="1" width="198" height="88" rx="14" fill="rgba(139,92,246,0.12)" stroke="rgba(168,85,247,0.4)" />
-              <text id="anySvg" x="100" y="58" text-anchor="middle" fill="#f3f1f8" font-family="JetBrains Mono, monospace" font-size="32" font-weight="700"></text>
-            </svg>
+        <pre class="code">const counter = document.querySelector('rolling-number');
+
+counter.addEventListener('rn-start', (e) => console.log('start', e.detail));  // { value, from, animated }
+counter.addEventListener('rn-end', (e) => console.log('end', e.detail.value));
+
+const { completed } = await counter.setValue(500);   // true when it reached 500
+counter.setValue(10, false);                          // roll each digit
+counter.setValue(10, { motion: 'none' });             // instant
+counter.setValue(10, { duration: 1500, easing: 'ease-out-expo' });
+
+// React: onRnStart / onRnEnd · Vue: @rn-start / @rn-end · Angular: (rnStart) / (rnEnd)</pre>
+      </section>
+
+      <!-- ── Styling ───────────────────────────────────── -->
+      <section class="view" data-view="styling" hidden>
+        <header>
+          <h2 data-i18n="styTitle">CSS variables lab</h2>
+          <p class="lead" data-i18n="styLead">The counter inherits your font, size and color. These custom properties tune the animation and the look; set them on the counter or on any ancestor.</p>
+        </header>
+        <div class="lab">
+          <div class="stage" style="min-height:260px">
+            <rolling-number id="styleCounter" value="2048"></rolling-number>
+            <button type="button" class="btn primary" id="btnStyleAnimate" data-i18n="animate">Animate</button>
           </div>
-          <div class="snippet">{ format: { style: 'unit', unit: 'celsius' }, decimals: 1 }</div>
+          <div style="display:flex;flex-direction:column;gap:1rem">
+            <div class="card grid" style="grid-template-columns: repeat(2, minmax(0, 1fr))">
+              <label class="field"><span>--rn-duration: <b id="durOut">500ms</b></span><input type="range" id="styDuration" min="150" max="2000" step="50" value="500" /></label>
+              <label class="field"><span>--rn-lh: <b id="lhOut">1</b></span><input type="range" id="styLh" min="1" max="1.6" step="0.05" value="1" /></label>
+              <label class="field"><span>--rn-easing</span><select id="styEasing"><option value="" data-i18n="easingDefault">default (odometer)</option><option>ease-in-out</option><option>linear</option><option value="cubic-bezier(0.34, 1.56, 0.64, 1)">back-out</option></select></label>
+              <label class="field"><span>font-family</span><select id="styFont"><option value="'JetBrains Mono', monospace">JetBrains Mono</option><option value="'Plus Jakarta Sans', sans-serif">Plus Jakarta Sans</option><option value="Georgia, serif">Georgia</option></select></label>
+              <label class="field"><span>--rn-decoration</span><select id="styDecoration"><option value="">none</option><option>underline</option><option>line-through</option></select></label>
+              <div class="field"><span data-i18n="effects">Effects</span><label class="check"><input type="checkbox" id="styGradient" /> --rn-fill</label><label class="check"><input type="checkbox" id="styGlow" /> --rn-bleed</label></div>
+            </div>
+            <pre class="code" id="cssOut"></pre>
+          </div>
         </div>
-      </div>
-
-      <h3 style="margin-top:2rem; font-size:1.05rem" data-i18n="statsTitle">Animate when visible</h3>
-      <p class="card-intro" style="margin:0.3rem 0 0" data-i18n="statsIntro">With from: 0 and trigger: 'visible' these numbers count up only when you scroll them into view.</p>
-      <div class="stats">
-        <div class="stat"><div class="n" id="statDownloads"></div><div class="l" data-i18n="statDownloads">weekly downloads</div></div>
-        <div class="stat"><div class="n" id="statUptime"></div><div class="l" data-i18n="statUptime">uptime</div></div>
-        <div class="stat"><div class="n" id="statRating"></div><div class="l" data-i18n="statRating">average rating</div></div>
-      </div>
-    </section>
-
-    <!-- ── 3. Styling ─────────────────────────────────────── -->
-    <section class="card" id="styling">
-      <div class="card-title"><span data-i18n="styTitle">Styling with CSS variables</span><span class="badge">--rn-*</span></div>
-      <p class="card-intro" data-i18n="styIntro">The counter inherits your font, size and color. These custom properties tune the animation and the look; set them on the counter or on any ancestor.</p>
-      <div class="styling">
-        <div class="style-preview">
-          <rolling-number id="styleCounter" value="2048"></rolling-number>
-          <button type="button" class="primary" id="btnStyleAnimate" data-i18n="btnAnimate">Animate</button>
+        <div class="table-wrap">
+          <table class="ref">
+            <thead><tr><th>Property</th><th>Default</th><th data-i18n="thEffect">Effect</th></tr></thead>
+            <tbody>
+              <tr><td><code>--rn-duration</code></td><td><code>0.5s</code></td><td>Duration of rolls; a non-default value also times counting (when the JS <code>duration</code> is unset).</td></tr>
+              <tr><td><code>--rn-easing</code></td><td><code>cubic-bezier(0.2, 1, 0.3, 1)</code></td><td>Easing of rolls; a non-default value also eases counting.</td></tr>
+              <tr><td><code>--rn-lh</code></td><td><code>1</code></td><td>Height of the digit window (and line height). Raise it if tall glyphs are clipped.</td></tr>
+              <tr><td><code>--rn-fill</code></td><td>—</td><td>Background image painted into the glyphs (pair with <code>color: transparent</code>).</td></tr>
+              <tr><td><code>--rn-bleed</code></td><td><code>0px</code></td><td>Lets glows and overhangs show outside the digit window (pair with a taller <code>--rn-lh</code>).</td></tr>
+              <tr><td><code>--rn-decoration</code></td><td>—</td><td>Underline or strike-through that stays still while the digits roll.</td></tr>
+              <tr><td><code>[data-rn-state="animating"]</code></td><td>—</td><td>Present on the host while it moves: style the running animation.</td></tr>
+            </tbody>
+          </table>
         </div>
+      </section>
+
+      <!-- ── Frameworks ────────────────────────────────── -->
+      <section class="view" data-view="frameworks" hidden>
+        <header>
+          <h2 data-i18n="fwTitle">Framework guides</h2>
+          <p class="lead" data-i18n="fwLead">Every integration takes the same options and fires the same rn-start / rn-end events.</p>
+        </header>
+        <div class="tabs-container" data-tabs="fw">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="react" aria-selected="true">React / Next.js</button>
+            <button type="button" role="tab" data-tab="vue" aria-selected="false">Vue / Nuxt</button>
+            <button type="button" role="tab" data-tab="angular" aria-selected="false">Angular</button>
+            <button type="button" role="tab" data-tab="svelte" aria-selected="false">Svelte / Solid / Alpine</button>
+            <button type="button" role="tab" data-tab="wc" aria-selected="false">Web Component</button>
+            <button type="button" role="tab" data-tab="cdn" aria-selected="false">CDN</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn sm" data-copy-from="fwOut" data-i18n="copy">Copy</button>
+          </div>
+          <div class="tab-body"><pre class="code" id="fwOut"></pre><p class="code-note" id="fwNote"></p></div>
+        </div>
+        <h3 data-i18n="liveIslands">Running live on this page</h3>
+        <div class="grid cols-2">
+          <div class="card island" id="reactIsland"></div>
+          <div class="card island" id="vueIsland"></div>
+        </div>
+      </section>
+
+      <!-- ── Options reference ─────────────────────────── -->
+      <section class="view" data-view="options" hidden>
+        <header>
+          <h2 data-i18n="optTitle">Options</h2>
+          <p class="lead" data-i18n="optLead">Every option is optional and works the same way in every integration. Invalid input never throws: it falls back to the default.</p>
+        </header>
+        <div class="table-wrap">
+          <table class="ref">
+            <thead><tr><th>Option</th><th>Attribute</th><th>Default</th><th data-i18n="thWhat">What it does</th></tr></thead>
+            <tbody>
+              <tr><td><code>value</code></td><td><code>value</code></td><td><code>0</code></td><td>The number to show, rounded to the displayed precision.</td></tr>
+              <tr><td><code>pad</code></td><td><code>pad</code></td><td><code>1</code></td><td>Minimum integer digits, padded with zeros (1–64).</td></tr>
+              <tr><td><code>max</code></td><td><code>max</code></td><td><code>null</code></td><td>Display limit, e.g. <code>99</code> for a badge; the accessible label keeps the real value.</td></tr>
+              <tr><td><code>overflowSuffix</code></td><td><code>overflow-suffix</code></td><td><code>''</code></td><td>Shown after the digits above <code>max</code>: <code>'+'</code> → <code>99+</code>.</td></tr>
+              <tr><td><code>interpolate</code></td><td><code>interpolate</code>, <code>no-interpolate</code></td><td><code>true</code></td><td><code>true</code> counts through the values; <code>false</code> rolls each digit straight to its new digit.</td></tr>
+              <tr><td><code>duration</code></td><td><code>duration</code></td><td>auto</td><td>Animation length in ms (auto: 400 when counting, <code>--rn-duration</code> when rolling).</td></tr>
+              <tr><td><code>easing</code></td><td><code>easing</code></td><td>auto</td><td>A preset (<code>odometer</code>, <code>ease-out-expo</code>, …), a CSS easing or a function.</td></tr>
+              <tr><td><code>decimals</code></td><td><code>decimals</code></td><td>auto</td><td>Fixed fraction digits (0–20); auto = the currency's digits, else 0.</td></tr>
+              <tr><td><code>locale</code></td><td><code>locale</code></td><td>—</td><td>BCP 47 locale, e.g. <code>'de-DE'</code>; turns on Intl formatting.</td></tr>
+              <tr><td><code>format</code></td><td><code>format</code> (JSON)</td><td>—</td><td>Intl options: currency, percent, unit, signDisplay, useGrouping, numberingSystem.</td></tr>
+              <tr><td><code>prefixText</code></td><td><code>prefix-text</code></td><td><code>''</code></td><td>Static text before the number.</td></tr>
+              <tr><td><code>suffixText</code></td><td><code>suffix-text</code></td><td><code>''</code></td><td>Static text after the number.</td></tr>
+              <tr><td><code>mode</code></td><td><code>mode</code></td><td><code>'auto'</code></td><td><code>'columns'</code> or <code>'text'</code>; auto picks text for form fields and SVG text.</td></tr>
+              <tr><td><code>from</code></td><td><code>from</code></td><td>—</td><td>Value shown at creation, then the counter animates to <code>value</code>.</td></tr>
+              <tr><td><code>trigger</code></td><td><code>trigger</code></td><td><code>'immediate'</code></td><td><code>'visible'</code>: animations wait until the counter is on screen.</td></tr>
+              <tr><td><code>label</code></td><td><code>label</code></td><td>the value</td><td>Accessible name: <code>'{value} points'</code> or a function.</td></tr>
+              <tr><td><code>live</code></td><td><code>live</code></td><td><code>'off'</code></td><td><code>'polite'</code> / <code>'assertive'</code>: announce settled values.</td></tr>
+              <tr><td><code>injectStyles</code></td><td><code>inject-styles</code></td><td><code>true</code></td><td><code>false</code> turns off the automatic stylesheet for this counter.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small" data-i18n="optFoot">React and Vue: props. Angular: rollingNumber (the value), pad, max, interpolate, duration, and rn + the option name for the others (rnFormat, rnLocale, …). update(): undefined = unchanged, null = back to the default.</p>
+      </section>
+
+      <!-- ── API reference ─────────────────────────────── -->
+      <section class="view" data-view="api" hidden>
+        <header>
+          <h2 data-i18n="apiTitle">API & events</h2>
+          <p class="lead"><code class="inline-code">const core = new RollingNumberCore(element, options)</code> — <span data-i18n="apiLead">the element and every framework binding wrap this class.</span></p>
+        </header>
+        <div class="table-wrap">
+          <table class="ref">
+            <thead><tr><th>Method</th><th data-i18n="thDesc">Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>setValue(value, animate?)</code></td><td>Sets the target; returns <code>Promise&lt;{ value, completed }&gt;</code>. <code>animate</code>: <code>true</code> (count), <code>false</code> (roll) or <code>{ motion, duration, easing }</code>.</td></tr>
+              <tr><td><code>update(options)</code></td><td>Changes several options (<code>undefined</code> = unchanged, <code>null</code> = default).</td></tr>
+              <tr><td><code>whenSettled()</code></td><td>Promise for the current animation (resolved at once when idle).</td></tr>
+              <tr><td><code>finish()</code></td><td>Jumps to the target now.</td></tr>
+              <tr><td><code>getValue()</code> / <code>getDisplayValue()</code></td><td>The target / the value on screen.</td></tr>
+              <tr><td><code>getText()</code></td><td>The formatted target text, e.g. <code>"99+"</code>.</td></tr>
+              <tr><td><code>isAnimating()</code></td><td><code>true</code> while the display moves.</td></tr>
+              <tr><td><code>destroy()</code></td><td>Removes only the counter's nodes and restores the element.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table class="ref">
+            <thead><tr><th>Event</th><th data-i18n="thWhen">When</th></tr></thead>
+            <tbody>
+              <tr><td><code>rn-start</code></td><td>The display starts moving (also instant changes, with <code>animated: false</code>). <code>detail = { value, from, animated }</code>.</td></tr>
+              <tr><td><code>rn-end</code></td><td>The display settled on the final value; the DOM is final.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table class="ref">
+            <thead><tr><th>Function</th><th data-i18n="thDesc">Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>rollingNumber(node, param)</code></td><td>Action for Svelte, Solid, Alpine, Lit: <code>{ update, destroy, core }</code>.</td></tr>
+              <tr><td><code>configureRollingNumber({ injectStyles, nonce })</code></td><td>Global configuration (call before the first counter).</td></tr>
+              <tr><td><code>injectRollingNumberStyles(root)</code></td><td>Adds the stylesheet to a document or shadow root yourself.</td></tr>
+              <tr><td><code>renderStaticText()</code> / <code>renderStaticHTML()</code></td><td>Server-side rendering helpers (also in <code>rolling-number/ssr</code>).</td></tr>
+              <tr><td><code>defineRollingNumber(tagName?)</code></td><td>Registers the element under another tag name.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Performance ───────────────────────────────── -->
+      <section class="view" data-view="performance" hidden>
+        <header>
+          <h2 data-i18n="perfTitle">100 counters at once</h2>
+          <p class="lead" data-i18n="perfLead">All counters on a page share a single requestAnimationFrame loop that batches DOM reads and writes.</p>
+        </header>
+        <div class="row">
+          <button type="button" class="btn primary" id="btnStressRandomize" data-i18n="stressRandomize">Randomize all 100</button>
+          <button type="button" class="btn" id="btnStressAuto" data-i18n="stressStart">Auto loop (start)</button>
+        </div>
+        <div class="stress-grid" id="stressContainer"></div>
+      </section>
+
+      <footer class="site-footer">
         <div>
-          <div class="style-controls">
-            <label class="field"><span>--rn-duration: <b id="durOut">500ms</b></span><input type="range" id="styDuration" min="150" max="2000" step="50" value="500" /></label>
-            <label class="field"><span>--rn-lh: <b id="lhOut">1</b></span><input type="range" id="styLh" min="1" max="1.6" step="0.05" value="1" /></label>
-            <label class="field"><span>--rn-easing</span>
-              <select id="styEasing">
-                <option value="" data-i18n="easingDefault">default (odometer)</option>
-                <option>ease-in-out</option>
-                <option>linear</option>
-                <option value="cubic-bezier(0.34, 1.56, 0.64, 1)">back-out (overshoot)</option>
-              </select>
-            </label>
-            <label class="field"><span>font-family</span>
-              <select id="styFont">
-                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-                <option value="'Outfit', sans-serif">Outfit</option>
-                <option value="Georgia, serif">Georgia</option>
-              </select>
-            </label>
-            <label class="field"><span>--rn-decoration</span>
-              <select id="styDecoration"><option value="">none</option><option>underline</option><option>line-through</option></select>
-            </label>
-            <div class="field">
-              <span data-i18n="styEffects">Effects</span>
-              <label class="check"><input type="checkbox" id="styGradient" /> <span>--rn-fill (gradient)</span></label>
-              <label class="check"><input type="checkbox" id="styGlow" /> <span>--rn-bleed (glow)</span></label>
-            </div>
-          </div>
-          <div class="code-panel"><pre class="code" id="cssOut"></pre></div>
+          <strong>Rolling Number</strong>
+          <p class="muted small"><span data-i18n="crafted">Crafted by</span> <a href="https://erlonrru.com" target="_blank" rel="noopener noreferrer">Erlon Rru</a> · MIT License.</p>
         </div>
-      </div>
-    </section>
-
-    <!-- ── 4. Frameworks ──────────────────────────────────── -->
-    <section class="card" id="frameworks">
-      <div class="card-title"><span data-i18n="fwTitle">Use it in your framework</span><span class="badge">React · Vue · Angular · Svelte · Web Component</span></div>
-      <p class="card-intro" data-i18n="fwIntro">Every integration takes the same options and fires the same rn-start / rn-end events. Pick yours:</p>
-      <div class="code-panel" id="fwPanel">
-        <div class="tabs" role="tablist" aria-label="Framework">
-          <button type="button" role="tab" data-fw="wc" aria-selected="true">Web Component</button>
-          <button type="button" role="tab" data-fw="js" aria-selected="false">Vanilla JS</button>
-          <button type="button" role="tab" data-fw="react" aria-selected="false">React / Next.js</button>
-          <button type="button" role="tab" data-fw="vue" aria-selected="false">Vue / Nuxt</button>
-          <button type="button" role="tab" data-fw="angular" aria-selected="false">Angular</button>
-          <button type="button" role="tab" data-fw="svelte" aria-selected="false">Svelte / others</button>
-          <button type="button" role="tab" data-fw="cdn" aria-selected="false">CDN</button>
+        <div class="links">
+          <a href="https://github.com/ErlonRr/rolling-number-js#readme" target="_blank" rel="noopener noreferrer">README</a>
+          <a href="https://github.com/ErlonRr/rolling-number-js" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://www.npmjs.com/package/rolling-number" target="_blank" rel="noopener noreferrer">npm</a>
+          <a href="https://erlonrru.com" target="_blank" rel="noopener noreferrer">erlonrru.com</a>
         </div>
-        <pre class="code" id="fwOut"></pre>
-        <div class="code-note" id="fwNote"></div>
-      </div>
-      <div class="live-islands">
-        <div class="island" id="reactIsland"></div>
-        <div class="island" id="vueIsland"></div>
-      </div>
-    </section>
-
-    <!-- ── 5. Performance ─────────────────────────────────── -->
-    <section class="card" id="performance">
-      <div class="card-title"><span data-i18n="perfTitle">100 counters at once</span><span class="badge" data-i18n="perfBadge">one shared animation frame</span></div>
-      <p class="card-intro" data-i18n="perfIntro">All counters on a page share a single requestAnimationFrame loop that batches reads and writes.</p>
-      <div class="toolbar">
-        <button type="button" class="primary" id="btnStressRandomize" data-i18n="btnStressRandomize">Randomize all 100</button>
-        <button type="button" id="btnStressAuto" data-i18n="btnStressAutoStart">Auto loop (start)</button>
-      </div>
-      <div class="stress-grid" id="stressContainer"></div>
-    </section>
-
-    <footer>
-      <p><span data-i18n="footer">Full documentation, options and migration notes in the</span> <a href="https://github.com/ErlonRr/rolling-number-js#readme" target="_blank" rel="noopener noreferrer">README</a>. MIT License.</p>
-    </footer>
+      </footer>
+    </main>
   </div>
 
   <script type="module">
@@ -486,75 +691,180 @@
     import { RollingNumber as VueRollingNumber } from 'rolling-number/vue';
 
     const $ = (id) => document.getElementById(id);
+    const rand = (min, max) => Math.round(min + Math.random() * (max - min));
 
-    // ── i18n ──────────────────────────────────────────────────
-    const it = {
-      subtitle: 'Un contatore numerico animato in stile contachilometri. Zero dipendenze, una sola API per Web Component, JS puro, React, Vue, Angular e Svelte — e funziona dentro qualsiasi elemento: testo, pulsanti, celle di tabella, input, textarea e SVG.',
-      installNote: 'Gli stili vengono iniettati automaticamente: nessun import CSS.',
-      navPlayground: 'Playground', navAnywhere: 'Ogni elemento', navStyling: 'Stile', navFrameworks: 'Framework', navPerformance: 'Prestazioni',
-      pgTitle: 'Playground',
-      pgIntro: 'Cambia un’impostazione e il contatore si aggiorna subito. Il codice qui sotto è generato dalle tue impostazioni, pronto da copiare per il framework che usi.',
-      btnRandom: 'Casuale', btnNegative: 'Negativo', btnSet: 'Imposta', logTitle: 'Eventi (rn-start / rn-end)',
-      grpBasics: 'Base', optMotion: 'Movimento', motionCount: 'Conta i valori', motionRoll: 'Ruota ogni cifra',
-      hintPad: 'Cifre minime (zeri iniziali)', hintDuration: 'Vuoto = automatico', hintMax: 'Limite mostrato, es. 99', hintOverflow: 'Mostrato oltre max: “99+”',
-      easingAuto: 'auto',
-      grpFormat: 'Formato', localeNone: 'nessuno (cifre semplici)', styleNumber: 'numero', hintDecimals: 'Cifre decimali fisse',
-      hintPercent: 'La percentuale moltiplica per 100: il valore 0.25 mostra 25%.',
-      grpA11y: 'Accessibilità', optLive: 'Annuncia i valori agli screen reader (live: \'polite\')', hintLabel: 'Nome accessibile; {value} è sostituito dal valore formattato',
-      btnCopy: 'Copia', copied: 'Copiato!',
-      anyTitle: 'Funziona in ogni elemento',
-      anyIntro: 'Lo stesso contatore si aggancia all’elemento che hai già. I contenitori ricevono le colonne di cifre animate; campi di form, <option> e testo SVG vengono animati come testo, così il valore resta un valore normale (consigliati campi read-only o non controllati).',
-      btnNewValues: 'Nuovi valori', autoplay: 'Riproduzione automatica',
-      anyInline: 'Testo in linea', anyInlineA: 'Hai', anyInlineB: 'nuovi messaggi', anyButton: 'Badge in un pulsante', anyCart: 'Carrello',
-      anyTable: 'Cella di tabella', anyRevenue: 'Ricavi', anyGrowth: 'Crescita', anyInput: 'Input', anyTextarea: 'Textarea', anyOption: 'Opzione di select', anySvg: 'Testo SVG',
-      statsTitle: 'Anima quando è visibile', statsIntro: 'Con from: 0 e trigger: \'visible\' questi numeri contano solo quando li fai scorrere nella vista.',
-      statDownloads: 'download settimanali', statUptime: 'disponibilità', statRating: 'valutazione media',
-      styTitle: 'Stile con le variabili CSS', styIntro: 'Il contatore eredita il tuo font, la dimensione e il colore. Queste proprietà personalizzate regolano animazione e aspetto; impostale sul contatore o su un antenato.',
-      btnAnimate: 'Anima', easingDefault: 'predefinito (odometer)', styEffects: 'Effetti',
-      fwTitle: 'Usalo nel tuo framework', fwIntro: 'Ogni integrazione accetta le stesse opzioni ed emette gli stessi eventi rn-start / rn-end. Scegli il tuo:',
-      perfTitle: '100 contatori insieme', perfBadge: 'un solo animation frame condiviso', perfIntro: 'Tutti i contatori della pagina condividono un unico ciclo requestAnimationFrame che raggruppa letture e scritture.',
-      btnStressRandomize: 'Casuali tutti e 100', btnStressAutoStart: 'Loop automatico (avvia)', btnStressAutoStop: 'Loop automatico (ferma)',
-      footer: 'Documentazione completa, opzioni e note di migrazione nel'
+    // ── i18n ───────────────────────────────────────────────
+    const IT = {
+      navGettingStarted: 'Per iniziare', navOverview: 'Panoramica', navInstall: 'Installazione e avvio rapido', navTry: 'Provalo',
+      navPlayground: 'Playground', navAnywhere: 'Ogni elemento', navFormatting: 'Formattazione numeri', navEvents: 'Eventi e promise',
+      navTheming: 'Stile', navStyling: 'Laboratorio variabili CSS', navGuides: 'Guide ai framework', navFrameworks: 'React, Vue, Angular, Svelte',
+      navReference: 'Riferimento', navOptions: 'Opzioni', navApi: 'API ed eventi', navPerformance: 'Prestazioni',
+      zeroDeps: 'zero dipendenze',
+      heroLead: 'Un contatore numerico animato in stile contachilometri. Gli dai un valore e ci arriva rotolando — dentro qualsiasi elemento: testo, pulsanti, celle di tabella, input, textarea e SVG.',
+      liveBadge: 'LIVE · ricavi simulati', pause: 'Pausa', resume: 'Riprendi', bigJump: 'Salto grande', drop: 'Calo',
+      statDeps: 'dipendenze a runtime', statIntegrations: 'integrazioni', statOptions: 'opzioni, una sola API', statTests: 'test automatici',
+      ctaPlayground: 'Apri il playground', ctaAnywhere: 'Guardalo in ogni elemento', ctaGuides: 'Guide ai framework',
+      f1t: 'Contachilometri continuo', f1d: 'Conta i valori intermedi; le cifre veloci girano come rulli, 9 → 0 va sempre avanti, e un nuovo valore a metà animazione continua da ciò che è sullo schermo.',
+      f2t: 'Qualsiasi elemento', f2d: 'Colonne di cifre nei contenitori; testo animato in input, textarea, option e testo SVG. Gli altri figli non vengono mai toccati.',
+      f3t: 'Formattazione vera', f3d: 'Valute, percentuali, unità, locale e cifre native con Intl, più badge 99+, prefissi e suffissi.',
+      f4t: 'Eventi e promise', f4d: 'Eventi rn-start / rn-end ovunque, e setValue() si risolve quando l’animazione finisce.',
+      f5t: 'Accessibile', f5d: 'Nome accessibile con il valore reale, annunci live opzionali e cambi istantanei con il movimento ridotto.',
+      f6t: 'Tipizzato, pronto per SSR, stili inclusi', f6d: 'Opzioni tipizzate in ogni IDE, fallback renderizzati dal server e foglio di stile iniettato automaticamente (compatibile con CSP).',
+      installTitle: 'Installazione e avvio rapido', installLead: 'Installa il pacchetto; il foglio di stile viene iniettato automaticamente alla creazione del primo contatore.',
+      copy: 'Copia', copied: 'Copiato!', quickStart: 'Avvio rapido',
+      nextPlayground: 'Playground →', nextPlaygroundD: 'Scegli le opzioni e copia il codice per il tuo framework.',
+      nextOptions: 'Tutte le opzioni →', nextOptionsD: 'Ogni opzione con il suo default, in una tabella.',
+      nextGuides: 'Guide ai framework →', nextGuidesD: 'Props, eventi e SSR per ogni framework.',
+      pgTitle: 'Playground', pgLead: 'Cambia un’impostazione e il contatore si aggiorna subito. Il codice qui sotto è generato dalle tue impostazioni, pronto da copiare.',
+      random: 'Casuale', negative: 'Negativo', setValue: 'Imposta', logTitle: 'Eventi (rn-start / rn-end)',
+      grpBasics: 'Base', motionCount: 'Conta i valori', motionRoll: 'Ruota ogni cifra', hintPad: 'Cifre minime (zeri iniziali)', hintDuration: 'Vuoto = automatico',
+      hintMax: 'Limite mostrato, es. 99', hintOverflow: 'Mostrato oltre max: “99+”', auto: 'auto', grpFormat: 'Formato', localeNone: 'nessuno (cifre semplici)', styleNumber: 'numero',
+      hintPercent: 'La percentuale moltiplica per 100: il valore 0.25 mostra 25%.', grpA11y: 'Accessibilità',
+      optLive: 'Annuncia i valori agli screen reader (live: \'polite\')', hintLabel: 'Nome accessibile; {value} è sostituito dal valore formattato',
+      anyTitle: 'Funziona in ogni elemento', anyLead: 'Lo stesso contatore si aggancia all’elemento che hai già. I contenitori ricevono colonne di cifre animate; campi di form, <option> e testo SVG vengono animati come testo, così il valore resta un valore normale.',
+      newValues: 'Nuovi valori', autoplay: 'Riproduzione automatica', anyInline: 'Testo in linea', anyInlineA: 'Hai', anyInlineB: 'nuovi messaggi',
+      anyButton: 'Badge in un pulsante', anyCart: 'Carrello', anyTable: 'Celle di tabella', anyRevenue: 'Ricavi', anyGrowth: 'Crescita', anyOption: 'Opzione di select', anySvg: 'Testo SVG', anyVisible: 'Quando è visibile',
+      fmtTitle: 'Formattazione dei numeri', fmtLead: 'Impostare locale o format attiva Intl: separatori, simboli di valuta, unità e cifre native. Le cifre continuano a rotolare; i simboli restano al loro posto.', shuffle: 'Cambia i valori',
+      evTitle: 'Eventi e promise', evLead: 'Ogni cambio emette rn-start e rn-end sull’elemento (risalgono il DOM), e setValue() restituisce una promise che si risolve a fine animazione.', evTwice: 'Due valori di fila',
+      styTitle: 'Laboratorio variabili CSS', styLead: 'Il contatore eredita il tuo font, la dimensione e il colore. Queste proprietà personalizzate regolano animazione e aspetto; impostale sul contatore o su un antenato.',
+      animate: 'Anima', easingDefault: 'predefinito (odometer)', effects: 'Effetti', thEffect: 'Effetto',
+      fwTitle: 'Guide ai framework', fwLead: 'Ogni integrazione accetta le stesse opzioni ed emette gli stessi eventi rn-start / rn-end.', liveIslands: 'In esecuzione su questa pagina',
+      optTitle: 'Opzioni', optLead: 'Ogni opzione è facoltativa e funziona allo stesso modo in ogni integrazione. Un valore non valido non lancia mai errori: torna al default.', thWhat: 'Cosa fa',
+      optFoot: 'React e Vue: props. Angular: rollingNumber (il valore), pad, max, interpolate, duration, e rn + il nome dell’opzione per le altre (rnFormat, rnLocale, …). update(): undefined = invariato, null = di nuovo il default.',
+      apiTitle: 'API ed eventi', apiLead: 'l’elemento e ogni integrazione con i framework usano questa classe.', thDesc: 'Descrizione', thWhen: 'Quando',
+      perfTitle: '100 contatori insieme', perfLead: 'Tutti i contatori della pagina condividono un unico ciclo requestAnimationFrame che raggruppa letture e scritture del DOM.',
+      stressRandomize: 'Casuali tutti e 100', stressStart: 'Loop automatico (avvia)', stressStop: 'Loop automatico (ferma)', crafted: 'Realizzato da'
     };
-    const en = {};
-    for (const el of document.querySelectorAll('[data-i18n]')) en[el.dataset.i18n] = el.textContent;
-    Object.assign(en, { copied: 'Copied!', btnStressAutoStop: 'Auto loop (stop)' });
+    const EN = {};
+    for (const el of document.querySelectorAll('[data-i18n]')) EN[el.dataset.i18n] = el.textContent;
+    Object.assign(EN, { copied: 'Copied!', resume: 'Resume', stressStop: 'Auto loop (stop)' });
     let lang = 'en';
-    const t = (key) => (lang === 'it' ? it : en)[key] ?? en[key] ?? key;
+    const t = (key) => (lang === 'it' ? IT : EN)[key] ?? EN[key] ?? key;
     function setLanguage(next) {
       lang = next;
       document.documentElement.lang = next;
       for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
-      $('btnLangEN').classList.toggle('active', next === 'en');
-      $('btnLangIT').classList.toggle('active', next === 'it');
-      $('btnStressAuto').textContent = t(stressTimer ? 'btnStressAutoStop' : 'btnStressAutoStart');
-      renderFramework();
-      renderCode();
+      $('heroPause').textContent = t(heroTimer ? 'pause' : 'resume');
+      $('btnStressAuto').textContent = t(stressTimer ? 'stressStop' : 'stressStart');
+      for (const group of tabGroups.values()) group.render();
     }
-    $('btnLangEN').addEventListener('click', () => setLanguage('en'));
-    $('btnLangIT').addEventListener('click', () => setLanguage('it'));
+    $('langSelect').addEventListener('change', (e) => setLanguage(e.target.value));
 
-    // ── 1. Playground ─────────────────────────────────────────
+    // ── Theme ──────────────────────────────────────────────
+    function syncThemeButton() {
+      const dark = document.documentElement.classList.contains('dark');
+      $('themeToggle').textContent = dark ? '☀️' : '🌙';
+      $('themeToggle').setAttribute('aria-pressed', String(dark));
+    }
+    $('themeToggle').addEventListener('click', () => {
+      const dark = document.documentElement.classList.toggle('dark');
+      try { localStorage.setItem('rn-demo-theme', dark ? 'dark' : 'light'); } catch {}
+      syncThemeButton();
+    });
+    syncThemeButton();
+
+    // ── Views (hash routing) and sidebar ───────────────────
+    const views = [...document.querySelectorAll('[data-view]')];
+    const navLinks = [...document.querySelectorAll('.sidebar a')];
+    function route() {
+      const id = location.hash.slice(1) || 'overview';
+      const view = views.find((v) => v.dataset.view === id) ?? views[0];
+      for (const v of views) v.hidden = v !== view;
+      for (const a of navLinks) {
+        if (a.getAttribute('href') === '#' + view.dataset.view) a.setAttribute('aria-current', 'page');
+        else a.removeAttribute('aria-current');
+      }
+      $('sidebar').classList.remove('open');
+      $('menuBtn').setAttribute('aria-expanded', 'false');
+      window.scrollTo({ top: 0 });
+    }
+    window.addEventListener('hashchange', route);
+    $('menuBtn').addEventListener('click', () => {
+      const open = $('sidebar').classList.toggle('open');
+      $('menuBtn').setAttribute('aria-expanded', String(open));
+    });
+
+    // ── Copy buttons ───────────────────────────────────────
+    async function copyText(text, button) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const prev = button.textContent;
+        button.textContent = t('copied');
+        setTimeout(() => (button.textContent = prev), 1200);
+      } catch { /* clipboard unavailable (http) */ }
+    }
+    for (const b of document.querySelectorAll('[data-copy]')) b.addEventListener('click', () => copyText(b.dataset.copy, b.querySelector('span') ?? b));
+    for (const b of document.querySelectorAll('[data-copy-from]')) b.addEventListener('click', () => copyText($(b.dataset.copyFrom).textContent, b));
+
+    // ── Tabs ───────────────────────────────────────────────
+    const tabGroups = new Map();
+    function tabs(name, render) {
+      const box = document.querySelector(`[data-tabs="${name}"]`);
+      const group = {
+        current: box.querySelector('[role="tab"][aria-selected="true"]').dataset.tab,
+        render: () => render(group.current)
+      };
+      for (const b of box.querySelectorAll('[role="tab"]')) {
+        b.addEventListener('click', () => {
+          group.current = b.dataset.tab;
+          for (const x of box.querySelectorAll('[role="tab"]')) x.setAttribute('aria-selected', String(x === b));
+          group.render();
+        });
+      }
+      tabGroups.set(name, group);
+      group.render();
+      return group;
+    }
+
+    // ── Overview ───────────────────────────────────────────
     const hero = $('heroCounter');
+    let heroValue = 12480.5;
+    let heroTimer = null;
+    const heroTick = () => { heroValue = Math.max(0, heroValue + rand(-180, 420) + rand(0, 99) / 100); hero.value = heroValue; };
+    const startHero = () => { heroTimer = setInterval(heroTick, 1800); };
+    $('heroPause').addEventListener('click', () => {
+      if (heroTimer) { clearInterval(heroTimer); heroTimer = null; } else { heroTick(); startHero(); }
+      $('heroPause').textContent = t(heroTimer ? 'pause' : 'resume');
+    });
+    $('heroJump').addEventListener('click', () => { heroValue += rand(20000, 90000); hero.value = heroValue; });
+    $('heroDrop').addEventListener('click', () => { heroValue = Math.max(0, heroValue - rand(5000, 15000)); hero.value = heroValue; });
+    startHero();
+    rollingNumber($('statIntegrations'), { value: 6, from: 0, trigger: 'visible', duration: 1200 });
+    rollingNumber($('statOptions'), { value: 18, from: 0, trigger: 'visible', duration: 1200 });
+    rollingNumber($('statTests'), { value: 999, from: 0, trigger: 'visible', duration: 1600, locale: 'en-US' });
+
+    // ── Install ────────────────────────────────────────────
+    const PM = {
+      pnpm: 'pnpm add rolling-number', npm: 'npm install rolling-number', yarn: 'yarn add rolling-number',
+      cdn: '<script src="https://unpkg.com/rolling-number"><\/script>\n<rolling-number value="42"></rolling-number>'
+    };
+    tabs('pm', (k) => ($('pmOut').textContent = PM[k]));
+    const QS = {
+      html: `<script type="module">import 'rolling-number';<\/script>\n\n<rolling-number value="1234" pad="4"></rolling-number>\n\n<script type="module">\n  document.querySelector('rolling-number').value = 5678; // animates\n<\/script>`,
+      react: `import { RollingNumber } from 'rolling-number/react';\n\nexport function Score({ value }) {\n  return <RollingNumber value={value} pad={4} />;\n}`,
+      vue: `<script setup>\nimport { RollingNumber } from 'rolling-number/vue';\nconst props = defineProps({ value: Number });\n<\/script>\n\n<template>\n  <RollingNumber :value="value" :pad="4" />\n</template>`,
+      angular: `import { Component, Input } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-score',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`<span [rollingNumber]="value" [pad]="4"></span>\`\n})\nexport class ScoreComponent {\n  @Input() value = 0;\n}`,
+      svelte: `<script>\n  import { rollingNumber } from 'rolling-number/action';\n  export let value = 0;\n<\/script>\n\n<span use:rollingNumber={{ value, pad: 4 }}></span>`,
+      js: `import { RollingNumberCore } from 'rolling-number/action';\n\nconst counter = new RollingNumberCore(document.querySelector('#score'), { value: 0, pad: 4 });\nawait counter.setValue(1234);`
+    };
+    tabs('qs', (k) => ($('qsOut').textContent = QS[k]));
+
+    // ── Playground ─────────────────────────────────────────
+    const pg = $('pgCounter');
     const state = {
       value: 1234, pad: 4, interpolate: true, duration: null, max: null, overflowSuffix: '', easing: '',
-      locale: '', style: '', currency: 'EUR', unit: 'kilometer-per-hour', decimals: null, prefixText: '', suffixText: '',
-      live: false, label: ''
+      locale: '', style: '', currency: 'EUR', unit: 'kilometer-per-hour', decimals: null, prefixText: '', suffixText: '', live: false, label: ''
     };
-
     const numOrNull = (s) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s));
-
     function formatOption() {
       if (state.style === 'currency') return { style: 'currency', currency: state.currency };
       if (state.style === 'percent') return { style: 'percent' };
       if (state.style === 'unit') return { style: 'unit', unit: state.unit };
       return null;
     }
-
-    /** Options that differ from the defaults, in a stable order (drives the element and the code). */
+    /** Options that differ from the defaults, in a stable order (drives the code). */
     function options() {
-      const o = {};
-      o.value = state.value;
+      const o = { value: state.value };
       if (state.pad !== 1) o.pad = state.pad;
       if (state.max !== null) o.max = state.max;
       if (state.max !== null && state.overflowSuffix) o.overflowSuffix = state.overflowSuffix;
@@ -571,57 +881,44 @@
       if (state.live) o.live = 'polite';
       return o;
     }
-
-    /** Applies every setting except `value` to the element (properties reflect to attributes). */
     function applyOptions() {
-      hero.pad = state.pad;
-      hero.max = state.max;
-      hero.overflowSuffix = state.max !== null ? state.overflowSuffix : '';
-      hero.interpolate = state.interpolate;
-      hero.duration = state.duration;
-      hero.easing = state.easing || null;
-      hero.locale = state.locale || null;
-      hero.format = formatOption();
-      hero.decimals = state.decimals;
-      hero.prefixText = state.prefixText;
-      hero.suffixText = state.suffixText;
-      hero.label = state.label || null;
-      hero.live = state.live ? 'polite' : 'off';
+      pg.pad = state.pad;
+      pg.max = state.max;
+      pg.overflowSuffix = state.max !== null ? state.overflowSuffix : '';
+      pg.interpolate = state.interpolate;
+      pg.duration = state.duration;
+      pg.easing = state.easing || null;
+      pg.locale = state.locale || null;
+      pg.format = formatOption();
+      pg.decimals = state.decimals;
+      pg.prefixText = state.prefixText;
+      pg.suffixText = state.suffixText;
+      pg.label = state.label || null;
+      pg.live = state.live ? 'polite' : 'off';
       $('optCurrency').disabled = state.style !== 'currency';
       $('optUnit').disabled = state.style !== 'unit';
       $('optOverflow').disabled = state.max === null;
       $('percentHint').hidden = state.style !== 'percent';
       renderCode();
     }
-
     function setValue(v) {
       state.value = Math.round(v * 1e6) / 1e6;
       $('valueInput').value = String(state.value);
       const started = performance.now();
-      hero.setValue(state.value).then(({ completed }) => {
-        $('logPromise').textContent = completed
-          ? `setValue() → resolved in ${Math.round(performance.now() - started)} ms`
-          : 'setValue() → superseded';
+      pg.setValue(state.value).then(({ completed }) => {
+        $('logPromise').textContent = completed ? `setValue() → ${Math.round(performance.now() - started)} ms` : 'setValue() → superseded';
       });
       renderCode();
     }
-
-    for (const btn of document.querySelectorAll('[data-step]')) {
-      btn.addEventListener('click', () => setValue(state.value + Number(btn.dataset.step)));
-    }
-    $('btnRand').addEventListener('click', () => setValue(state.style === 'percent' ? Math.random() : Math.floor(Math.random() * 99999)));
+    for (const b of document.querySelectorAll('[data-step]')) b.addEventListener('click', () => setValue(state.value + Number(b.dataset.step)));
+    $('btnRand').addEventListener('click', () => setValue(state.style === 'percent' ? Math.random() : rand(0, 99999)));
     $('btnNeg').addEventListener('click', () => setValue(-Math.abs(state.value || 1234)));
     $('btnZero').addEventListener('click', () => setValue(0));
-    $('valueForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const v = numOrNull($('valueInput').value);
-      if (v !== null) setValue(v);
-    });
-
-    for (const btn of document.querySelectorAll('[data-motion]')) {
-      btn.addEventListener('click', () => {
-        state.interpolate = btn.dataset.motion === 'count';
-        for (const b of document.querySelectorAll('[data-motion]')) b.setAttribute('aria-pressed', String(b === btn));
+    $('valueForm').addEventListener('submit', (e) => { e.preventDefault(); const v = numOrNull($('valueInput').value); if (v !== null) setValue(v); });
+    for (const b of document.querySelectorAll('[data-motion]')) {
+      b.addEventListener('click', () => {
+        state.interpolate = b.dataset.motion === 'count';
+        for (const x of document.querySelectorAll('[data-motion]')) x.setAttribute('aria-pressed', String(x === b));
         applyOptions();
       });
     }
@@ -641,19 +938,26 @@
     bind('optLabel', 'label', (el) => el.value);
     $('optLive').addEventListener('change', (e) => { state.live = e.target.checked; applyOptions(); });
 
-    // Event log
-    const logLines = [];
     const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-    for (const type of ['rn-start', 'rn-end']) {
-      hero.addEventListener(type, (e) => {
-        const { value, from, animated } = e.detail;
-        logLines.unshift(`<span class="${type === 'rn-end' ? 'end' : ''}"><b>${type}</b>  value ${fmt(value)}  from ${fmt(from)}  ${animated ? 'animated' : 'instant'}</span>`);
-        logLines.length = Math.min(logLines.length, 6);
-        $('eventLog').innerHTML = logLines.join('<br>');
-      });
+    function logEvents(el, out) {
+      const lines = [];
+      for (const type of ['rn-start', 'rn-end']) {
+        el.addEventListener(type, (e) => {
+          const { value, from, animated } = e.detail;
+          const line = document.createElement('div');
+          if (type === 'rn-end') line.className = 'end';
+          const b = document.createElement('b');
+          b.textContent = type;
+          line.append(b, `  value ${fmt(value)}  from ${fmt(from)}  ${animated ? 'animated' : 'instant'}`);
+          lines.unshift(line);
+          lines.length = Math.min(lines.length, 8);
+          out.replaceChildren(...lines);
+        });
+      }
     }
+    logEvents(pg, $('eventLog'));
 
-    // ── Code generation ──
+    // Code generation
     const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
     function lit(v) {
       if (v === null) return 'null';
@@ -664,91 +968,52 @@
     const kebab = (k) => k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
     const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     const ANGULAR_LEGACY = new Set(['pad', 'max', 'interpolate', 'duration']);
-
     const CODE = {
       html(o) {
-        const attrs = Object.entries(o).map(([k, v]) => {
-          if (k === 'format') return `format='${JSON.stringify(v)}'`;
-          return `${kebab(k)}="${escAttr(v)}"`;
-        });
-        return `<script type="module">\n  import 'rolling-number';\n<\/script>\n\n<rolling-number\n  ${attrs.join('\n  ')}\n></rolling-number>\n\n<script type="module">\n  const counter = document.querySelector('rolling-number');\n  counter.value = 5678;                      // or: await counter.setValue(5678)\n  counter.addEventListener('rn-end', (e) => console.log(e.detail.value));\n<\/script>`;
+        const attrs = Object.entries(o).map(([k, v]) => (k === 'format' ? `format='${JSON.stringify(v)}'` : `${kebab(k)}="${escAttr(v)}"`));
+        return `<script type="module">import 'rolling-number';<\/script>\n\n<rolling-number\n  ${attrs.join('\n  ')}\n></rolling-number>\n\n<script type="module">\n  const counter = document.querySelector('rolling-number');\n  counter.value = 5678;            // or: await counter.setValue(5678)\n  counter.addEventListener('rn-end', (e) => console.log(e.detail.value));\n<\/script>`;
       },
       js(o) {
         const { value, ...rest } = o;
         const body = [`value: ${lit(value)}`, ...Object.entries(rest).map(([k, v]) => `${k}: ${lit(v)}`)];
-        return `import { RollingNumberCore } from 'rolling-number';\n\nconst el = document.querySelector('#counter');\nconst counter = new RollingNumberCore(el, {\n  ${body.join(',\n  ')}\n});\n\nawait counter.setValue(5678);                // resolves when the animation ends\nel.addEventListener('rn-end', (e) => console.log(e.detail.value));\ncounter.update({ max: 99 });                 // change options later\ncounter.destroy();                           // restores the element`;
+        return `import { RollingNumberCore } from 'rolling-number';\n\nconst el = document.querySelector('#counter');\nconst counter = new RollingNumberCore(el, {\n  ${body.join(',\n  ')}\n});\n\nawait counter.setValue(5678);       // resolves when the animation ends\nel.addEventListener('rn-end', (e) => console.log(e.detail.value));`;
       },
       react(o) {
-        const props = Object.entries(o).map(([k, v]) => {
-          if (k === 'value') return 'value={count}';
-          if (typeof v === 'string') return `${k}=${JSON.stringify(v)}`;
-          if (typeof v === 'object') return `${k}={${lit(v)}}`;
-          return `${k}={${v}}`;
-        });
-        return `import { useState } from 'react';\nimport { RollingNumber } from 'rolling-number/react';\n\nexport function Counter() {\n  const [count, setCount] = useState(${lit(o.value)});\n  return (\n    <RollingNumber\n      ${props.join('\n      ')}\n      onRnEnd={(e) => console.log(e.detail.value)}\n      onClick={() => setCount((c) => c + 1)}\n    />\n  );\n}`;
+        const props = Object.entries(o).map(([k, v]) => (k === 'value' ? 'value={count}' : typeof v === 'string' ? `${k}=${JSON.stringify(v)}` : typeof v === 'object' ? `${k}={${lit(v)}}` : `${k}={${v}}`));
+        return `import { useState } from 'react';\nimport { RollingNumber } from 'rolling-number/react';\n\nexport function Counter() {\n  const [count, setCount] = useState(${lit(o.value)});\n  return (\n    <RollingNumber\n      ${props.join('\n      ')}\n      onRnEnd={(e) => console.log(e.detail.value)}\n    />\n  );\n}`;
       },
       vue(o) {
-        const props = Object.entries(o).map(([k, v]) => {
-          if (k === 'value') return ':value="count"';
-          if (typeof v === 'string') return `${kebab(k)}="${escAttr(v)}"`;
-          return `:${kebab(k)}="${escAttr(lit(v))}"`;
-        });
-        return `<script setup>\nimport { ref } from 'vue';\nimport { RollingNumber } from 'rolling-number/vue';\n\nconst count = ref(${lit(o.value)});\n<\/script>\n\n<template>\n  <RollingNumber\n    ${props.join('\n    ')}\n    @rn-end="(e) => console.log(e.detail.value)"\n    @click="count++"\n  />\n</template>`;
+        const props = Object.entries(o).map(([k, v]) => (k === 'value' ? ':value="count"' : typeof v === 'string' ? `${kebab(k)}="${escAttr(v)}"` : `:${kebab(k)}="${escAttr(lit(v))}"`));
+        return `<script setup>\nimport { ref } from 'vue';\nimport { RollingNumber } from 'rolling-number/vue';\n\nconst count = ref(${lit(o.value)});\n<\/script>\n\n<template>\n  <RollingNumber\n    ${props.join('\n    ')}\n    @rn-end="(e) => console.log(e.detail.value)"\n  />\n</template>`;
       },
       angular(o) {
         const inputs = Object.entries(o).map(([k, v]) => {
           if (k === 'value') return '[rollingNumber]="count"';
           const name = ANGULAR_LEGACY.has(k) ? k : 'rn' + k[0].toUpperCase() + k.slice(1);
-          if (typeof v === 'string') return `${name}="${escAttr(v)}"`;
-          return `[${name}]="${escAttr(lit(v))}"`;
+          return typeof v === 'string' ? `${name}="${escAttr(v)}"` : `[${name}]="${escAttr(lit(v))}"`;
         });
-        return `import { Component } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-counter',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`\n    <span\n      ${inputs.join('\n      ')}\n      (rnEnd)="onEnd($event.detail.value)"\n      (click)="count = count + 1"\n    ></span>\n  \`\n})\nexport class CounterComponent {\n  count = ${lit(o.value)};\n  onEnd(value: number) { console.log(value); }\n}`;
+        return `import { Component } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-counter',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`\n    <span\n      ${inputs.join('\n      ')}\n      (rnEnd)="onEnd($event.detail.value)"\n    ></span>\n  \`\n})\nexport class CounterComponent {\n  count = ${lit(o.value)};\n  onEnd(value: number) { console.log(value); }\n}`;
       },
       svelte(o) {
         const { value, ...rest } = o;
         const body = ['value: count', ...Object.entries(rest).map(([k, v]) => `${k}: ${lit(v)}`)];
-        return `<script>\n  import { rollingNumber } from 'rolling-number/action';\n  let count = ${lit(value)};\n<\/script>\n\n<span use:rollingNumber={{ ${body.join(', ')} }}\n      on:click={() => count++}></span>`;
+        return `<script>\n  import { rollingNumber } from 'rolling-number/action';\n  let count = ${lit(value)};\n<\/script>\n\n<span use:rollingNumber={{ ${body.join(', ')} }}></span>`;
       }
     };
     const NOTES = {
-      en: {
-        html: 'Attributes are kebab-case; format is JSON. Every attribute is also a typed property.',
-        js: 'The core attaches to any element you pass: span, div, button, input, textarea, SVG text…',
-        react: 'Works in Next.js (client component). staticFallback renders the number on the server too.',
-        vue: 'Also available as a directive: <span v-rolling-number="{ value: count, pad: 4 }"></span>.',
-        angular: 'Use #c="rollingNumber" to call c.setValue() from the template. rnTarget attaches to an inner <input>.',
-        svelte: 'The action works with Svelte, Solid, Lit and Alpine (update() takes the full option set).'
-      },
-      it: {
-        html: 'Gli attributi sono in kebab-case; format è JSON. Ogni attributo è anche una proprietà tipizzata.',
-        js: 'Il core si aggancia a qualsiasi elemento: span, div, button, input, textarea, testo SVG…',
-        react: 'Funziona in Next.js (client component). staticFallback mostra il numero anche dal server.',
-        vue: 'Disponibile anche come direttiva: <span v-rolling-number="{ value: count, pad: 4 }"></span>.',
-        angular: 'Con #c="rollingNumber" chiami c.setValue() dal template. rnTarget si aggancia a un <input> interno.',
-        svelte: 'L’azione funziona con Svelte, Solid, Lit e Alpine (update() riceve tutte le opzioni).'
-      }
+      en: { html: 'Attributes are kebab-case; format is JSON. Every attribute is also a typed property.', js: 'The core attaches to any element: span, div, button, input, textarea, SVG text…', react: 'Works in Next.js (client component). staticFallback renders the number on the server too.', vue: 'Also a directive: <span v-rolling-number="{ value: count, pad: 4 }"></span>.', angular: '#c="rollingNumber" gives the template c.setValue(). rnTarget attaches to an inner <input>.', svelte: 'The action works with Svelte, Solid, Lit and Alpine (update() takes the full option set).' },
+      it: { html: 'Gli attributi sono in kebab-case; format è JSON. Ogni attributo è anche una proprietà tipizzata.', js: 'Il core si aggancia a qualsiasi elemento: span, div, button, input, textarea, testo SVG…', react: 'Funziona in Next.js (client component). staticFallback mostra il numero anche dal server.', vue: 'Anche come direttiva: <span v-rolling-number="{ value: count, pad: 4 }"></span>.', angular: 'Con #c="rollingNumber" il template chiama c.setValue(). rnTarget si aggancia a un <input> interno.', svelte: 'L’azione funziona con Svelte, Solid, Lit e Alpine (update() riceve tutte le opzioni).' }
     };
-    let tab = 'html';
+    let codeTabs = null;
     function renderCode() {
-      $('codeOut').textContent = CODE[tab](options());
-      $('codeNote').textContent = NOTES[lang][tab];
+      if (!codeTabs) return;
+      $('codeOut').textContent = CODE[codeTabs.current](options());
+      $('codeNote').textContent = NOTES[lang][codeTabs.current];
     }
-    function selectTabs(container, attr, current) {
-      for (const b of container.querySelectorAll(`[${attr}]`)) b.setAttribute('aria-selected', String(b.getAttribute(attr) === current));
-    }
-    for (const b of document.querySelectorAll('#codePanel [data-tab]')) {
-      b.addEventListener('click', () => { tab = b.dataset.tab; selectTabs($('codePanel'), 'data-tab', tab); renderCode(); });
-    }
-    $('btnCopy').addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText($('codeOut').textContent);
-        $('btnCopy').textContent = t('copied');
-        setTimeout(() => ($('btnCopy').textContent = t('btnCopy')), 1200);
-      } catch { /* clipboard unavailable (http) */ }
-    });
+    codeTabs = tabs('code', () => renderCode());
+    renderCode();
 
-    // ── 2. Any element ────────────────────────────────────────
-    const rand = (min, max) => Math.round(min + Math.random() * (max - min));
+    // ── Any element ────────────────────────────────────────
     const anywhere = [
       { el: $('anyInline'), opts: { max: 99, overflowSuffix: '+' }, next: () => rand(0, 140) },
       { el: $('anyCart'), opts: {}, next: () => rand(0, 12) },
@@ -759,22 +1024,60 @@
       { el: $('anyOption'), opts: { prefixText: 'Seats left: ' }, next: () => rand(0, 300) },
       { el: $('anySvg'), opts: { locale: 'en-US', format: { style: 'unit', unit: 'celsius' }, decimals: 1 }, next: () => rand(-200, 400) / 10 }
     ].map((item) => ({ ...item, action: rollingNumber(item.el, { ...item.opts, value: item.next() }) }));
-
-    function newValues() {
-      for (const item of anywhere) item.action.core?.setValue(item.next());
-    }
+    rollingNumber($('anyVisibleN'), { value: 12480, from: 0, trigger: 'visible', duration: 1600, locale: 'en-US' });
+    const newValues = () => { for (const item of anywhere) item.action.core?.setValue(item.next()); };
     $('btnAnyNew').addEventListener('click', newValues);
     let anyTimer = null;
-    $('anyAuto').addEventListener('change', (e) => {
-      clearInterval(anyTimer);
-      anyTimer = e.target.checked ? setInterval(newValues, 1600) : null;
+    $('anyAuto').addEventListener('change', (e) => { clearInterval(anyTimer); anyTimer = e.target.checked ? setInterval(newValues, 1600) : null; });
+
+    // ── Formatting ─────────────────────────────────────────
+    const FORMATS = [
+      { title: 'Euro · de-DE', opts: { locale: 'de-DE', format: { style: 'currency', currency: 'EUR' } }, next: () => rand(0, 999999) / 100 },
+      { title: 'Dollar · accounting', opts: { locale: 'en-US', format: { style: 'currency', currency: 'USD', currencySign: 'accounting' } }, next: () => rand(-50000, 50000) / 100 },
+      { title: 'Yen · ja-JP', opts: { locale: 'ja-JP', format: { style: 'currency', currency: 'JPY' } }, next: () => rand(0, 9999999) },
+      { title: 'Percent', opts: { locale: 'en-US', format: { style: 'percent' }, decimals: 1 }, next: () => rand(0, 1000) / 1000 },
+      { title: 'Speed · unit', opts: { locale: 'en-US', format: { style: 'unit', unit: 'kilometer-per-hour' } }, next: () => rand(0, 320) },
+      { title: 'Indian grouping · hi-IN', opts: { locale: 'hi-IN' }, next: () => rand(0, 99999999) },
+      { title: 'Native digits · ar-EG', opts: { locale: 'ar-EG' }, next: () => rand(0, 99999) },
+      { title: 'Sign always', opts: { format: { signDisplay: 'always' } }, next: () => rand(-500, 500) },
+      { title: 'Badge · 99+', opts: { max: 99, overflowSuffix: '+' }, next: () => rand(0, 160) },
+      { title: 'Prefix · suffix', opts: { prefixText: '≈ ', suffixText: ' pts' }, next: () => rand(0, 9999) },
+      { title: 'Zero padding', opts: { pad: 6 }, next: () => rand(0, 99999) },
+      { title: 'Decimals', opts: { decimals: 3 }, next: () => rand(0, 99999) / 1000 }
+    ];
+    const fmtCounters = FORMATS.map((f) => {
+      const card = document.createElement('div');
+      card.className = 'card mini';
+      const title = document.createElement('h3');
+      title.textContent = f.title;
+      const slot = document.createElement('div');
+      slot.className = 'slot';
+      const n = document.createElement('span');
+      n.className = 'fmt-value';
+      slot.append(n);
+      const code = document.createElement('div');
+      code.className = 'snippet';
+      code.textContent = lit(f.opts);
+      card.append(title, slot, code);
+      $('fmtGrid').append(card);
+      return { f, action: rollingNumber(n, { ...f.opts, value: f.next() }) };
     });
+    $('btnFmtShuffle').addEventListener('click', () => { for (const { f, action } of fmtCounters) action.core?.setValue(f.next()); });
 
-    rollingNumber($('statDownloads'), { value: 12480, from: 0, trigger: 'visible', duration: 1600, locale: 'en-US' });
-    rollingNumber($('statUptime'), { value: 0.999, from: 0, trigger: 'visible', duration: 1600, locale: 'en-US', format: { style: 'percent' }, decimals: 1 });
-    rollingNumber($('statRating'), { value: 4.8, from: 0, trigger: 'visible', duration: 1600, decimals: 1, suffixText: ' ★' });
+    // ── Events ─────────────────────────────────────────────
+    const ev = $('evCounter');
+    logEvents(ev, $('evLog'));
+    for (const b of document.querySelectorAll('[data-ev]')) {
+      b.addEventListener('click', () => {
+        const v = rand(0, 9999);
+        if (b.dataset.ev === 'count') ev.setValue(v);
+        else if (b.dataset.ev === 'roll') ev.setValue(v, false);
+        else if (b.dataset.ev === 'none') ev.setValue(v, { motion: 'none' });
+        else { ev.setValue(v); setTimeout(() => ev.setValue(rand(0, 9999)), 150); }
+      });
+    }
 
-    // ── 3. Styling ────────────────────────────────────────────
+    // ── Styling lab ────────────────────────────────────────
     const styleCounter = $('styleCounter');
     function applyStyle() {
       const s = styleCounter.style;
@@ -783,10 +1086,7 @@
       const glow = $('styGlow').checked;
       const gradient = $('styGradient').checked;
       const rules = [];
-      const set = (prop, value) => {
-        if (value === null) s.removeProperty(prop);
-        else { s.setProperty(prop, value); rules.push(`${prop}: ${value};`); }
-      };
+      const set = (prop, value) => { if (value === null) s.removeProperty(prop); else { s.setProperty(prop, value); rules.push(`${prop}: ${value};`); } };
       $('durOut').textContent = duration + 'ms';
       $('lhOut').textContent = String(lh);
       set('--rn-duration', duration === 500 ? null : duration + 'ms');
@@ -794,117 +1094,79 @@
       set('--rn-lh', glow ? String(Math.max(lh, 1.4)) : lh === 1 ? null : String(lh));
       set('font-family', $('styFont').value);
       set('--rn-decoration', $('styDecoration').value || null);
-      set('--rn-fill', gradient ? 'linear-gradient(180deg, #f0abfc, #818cf8)' : null);
+      set('--rn-fill', gradient ? 'linear-gradient(180deg, #a78bfa, #6366f1)' : null);
       if (gradient) rules.push('color: transparent;');
       set('--rn-bleed', glow ? '14px' : null);
-      if (glow) rules.push('text-shadow: 0 0 18px #c084fc, 0 0 42px #8b5cf6;');
+      if (glow) rules.push('text-shadow: 0 0 16px #8b5cf6;');
       styleCounter.classList.toggle('gradient', gradient);
       styleCounter.classList.toggle('glow', glow);
       $('cssOut').textContent = `.my-counter {\n  ${rules.join('\n  ')}\n}`;
     }
-    for (const id of ['styDuration', 'styLh', 'styEasing', 'styFont', 'styDecoration', 'styGradient', 'styGlow']) {
-      $(id).addEventListener('input', applyStyle);
-    }
-    // Without a JS duration, the CSS variables time both rolls and counts.
+    for (const id of ['styDuration', 'styLh', 'styEasing', 'styFont', 'styDecoration', 'styGradient', 'styGlow']) $(id).addEventListener('input', applyStyle);
     $('btnStyleAnimate').addEventListener('click', () => styleCounter.setValue(rand(0, 9999)));
     applyStyle();
 
-    // ── 4. Frameworks ─────────────────────────────────────────
+    // ── Frameworks ─────────────────────────────────────────
     const FW = {
-      wc: `npm i rolling-number\n\n<!-- registers <rolling-number> -->\n<script type="module">import 'rolling-number';<\/script>\n\n<rolling-number value="1234" pad="4"></rolling-number>\n<rolling-number value="99" max="99" overflow-suffix="+"></rolling-number>\n<rolling-number value="1234.5" locale="de-DE"\n  format='{"style":"currency","currency":"EUR"}'></rolling-number>\n\n<script type="module">\n  const el = document.querySelector('rolling-number');\n  el.value = 4321;                       // animates\n  await el.setValue(5000, { duration: 1200 });\n  el.addEventListener('rn-end', (e) => console.log(e.detail.value));\n<\/script>`,
-      js: `npm i rolling-number\n\nimport { RollingNumberCore, rollingNumber } from 'rolling-number/action'; // no custom element registration\n\n// Attach to any element: span, td, button, input, textarea, svg <text>…\nconst counter = new RollingNumberCore(document.querySelector('#total'), {\n  value: 0,\n  locale: 'en-US',\n  format: { style: 'currency', currency: 'USD' }\n});\n\nconst { completed } = await counter.setValue(1999.99);\ncounter.setValue(10, false);              // roll each digit instead of counting\ncounter.setValue(25, { motion: 'none' }); // instant\ncounter.destroy();`,
-      react: `npm i rolling-number\n\n'use client'; // Next.js App Router\nimport { useRef, useState } from 'react';\nimport { RollingNumber, useRollingNumber } from 'rolling-number/react';\n\nexport function Price({ amount }: { amount: number }) {\n  return (\n    <RollingNumber\n      value={amount}\n      locale="en-US"\n      format={{ style: 'currency', currency: 'USD' }}\n      staticFallback          // server-rendered text, hydrated without warnings\n      onRnEnd={(e) => console.log(e.detail.value)}\n      className="price"\n    />\n  );\n}\n\n// Or on your own element:\nfunction Badge({ count }: { count: number }) {\n  const ref = useRef<HTMLSpanElement>(null);\n  useRollingNumber(ref, { value: count, max: 99, overflowSuffix: '+' });\n  return <span ref={ref} className="badge" />;\n}`,
-      vue: `npm i rolling-number\n\n<script setup lang="ts">\nimport { ref } from 'vue';\nimport { RollingNumber, vRollingNumber } from 'rolling-number/vue';\n\nconst score = ref(1200);\n<\/script>\n\n<template>\n  <!-- component -->\n  <RollingNumber :value="score" :pad="4" @rn-end="(e) => console.log(e.detail.value)" />\n\n  <!-- directive on any element -->\n  <td v-rolling-number="{ value: score, locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }"></td>\n</template>`,
-      angular: `npm i rolling-number\n\nimport { Component } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-stats',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`\n    <span [rollingNumber]="visitors" [pad]="4"></span>\n\n    <span [rollingNumber]="price" rnLocale="it-IT"\n          [rnFormat]="{ style: 'currency', currency: 'EUR' }"\n          (rnEnd)="done($event.detail.value)" #c="rollingNumber"></span>\n    <button (click)="c.setValue(0)">Reset</button>\n\n    <!-- PrimeNG / Material inputs: attach to the inner <input> -->\n    <p-inputNumber [rollingNumber]="qty" rnTarget="input" />\n  \`\n})\nexport class StatsComponent {\n  visitors = 1200;\n  price = 49.9;\n  qty = 3;\n  done(value: number) { console.log(value); }\n}`,
-      svelte: `npm i rolling-number\n\n<!-- Svelte -->\n<script>\n  import { rollingNumber } from 'rolling-number/action';\n  let count = 0;\n<\/script>\n<span use:rollingNumber={{ value: count, pad: 3 }}></span>\n\n// Solid\n<span ref={(el) => rollingNumber(el, { value: count() })} />\n\n// Alpine\n<span x-data="{ n: 5 }" x-init="const c = rollingNumber($el, n); $watch('n', (v) => c.update(v))"></span>`,
-      cdn: `<!-- one script tag, global RollingNumber, styles injected -->\n<script src="https://unpkg.com/rolling-number"><\/script>\n\n<rolling-number value="42"></rolling-number>\n\n<script>\n  RollingNumber.rollingNumber(document.querySelector('#n'), { value: 7 });\n<\/script>\n\n<!-- strict CSP: pass a nonce, or opt out and link the stylesheet -->\n<script src="https://unpkg.com/rolling-number" nonce="…"><\/script>\n<script src="https://unpkg.com/rolling-number" data-rn-inject="false"><\/script>\n<link rel="stylesheet" href="https://unpkg.com/rolling-number/dist/style.css">`
+      react: `'use client'; // Next.js App Router\nimport { useRef } from 'react';\nimport { RollingNumber, useRollingNumber } from 'rolling-number/react';\n\nexport function Price({ amount }: { amount: number }) {\n  return (\n    <RollingNumber\n      value={amount}\n      locale="en-US"\n      format={{ style: 'currency', currency: 'USD' }}\n      staticFallback             // number rendered on the server too\n      onRnEnd={(e) => console.log(e.detail.value)}\n      className="price"\n    />\n  );\n}\n\n// On your own element:\nfunction Badge({ count }: { count: number }) {\n  const ref = useRef<HTMLSpanElement>(null);\n  useRollingNumber(ref, { value: count, max: 99, overflowSuffix: '+' });\n  return <span ref={ref} className="badge" />;\n}`,
+      vue: `<script setup lang="ts">\nimport { ref } from 'vue';\nimport { RollingNumber, vRollingNumber } from 'rolling-number/vue';\nconst score = ref(1200);\n<\/script>\n\n<template>\n  <!-- component -->\n  <RollingNumber :value="score" :pad="4" @rn-end="(e) => console.log(e.detail.value)" />\n\n  <!-- directive on any element -->\n  <td v-rolling-number="{ value: score, locale: 'it-IT', format: { style: 'currency', currency: 'EUR' } }"></td>\n</template>`,
+      angular: `import { Component } from '@angular/core';\nimport { RollingNumberDirective } from 'rolling-number/angular';\n\n@Component({\n  selector: 'app-stats',\n  standalone: true,\n  imports: [RollingNumberDirective],\n  template: \`\n    <span [rollingNumber]="visitors" [pad]="4"></span>\n\n    <span [rollingNumber]="price" rnLocale="it-IT"\n          [rnFormat]="{ style: 'currency', currency: 'EUR' }"\n          (rnEnd)="done($event.detail.value)" #c="rollingNumber"></span>\n    <button (click)="c.setValue(0)">Reset</button>\n\n    <!-- PrimeNG / Material inputs: animate the inner <input> -->\n    <p-inputNumber [rollingNumber]="qty" rnTarget="input" />\n  \`\n})\nexport class StatsComponent {\n  visitors = 1200;\n  price = 49.9;\n  qty = 3;\n  done(value: number) { console.log(value); }\n}`,
+      svelte: `<!-- Svelte -->\n<script>\n  import { rollingNumber } from 'rolling-number/action';\n  let count = 0;\n<\/script>\n<span use:rollingNumber={{ value: count, pad: 3 }}></span>\n\n// Solid\n<span ref={(el) => rollingNumber(el, { value: count() })} />\n\n// Alpine\n<span x-data="{ n: 5 }" x-init="const c = rollingNumber($el, n); $watch('n', (v) => c.update(v))"></span>`,
+      wc: `<script type="module">import 'rolling-number';<\/script>\n\n<rolling-number value="1234" pad="4"></rolling-number>\n<rolling-number value="150" max="99" overflow-suffix="+"></rolling-number>\n<rolling-number value="1234.5" locale="de-DE"\n  format='{"style":"currency","currency":"EUR"}'></rolling-number>\n\n<script type="module">\n  const el = document.querySelector('rolling-number');\n  el.value = 4321;                              // animates\n  await el.setValue(5000, { duration: 1200 });\n  el.addEventListener('rn-end', (e) => console.log(e.detail.value));\n<\/script>`,
+      cdn: `<!-- one script tag: registers <rolling-number> and injects the styles -->\n<script src="https://unpkg.com/rolling-number"><\/script>\n\n<rolling-number value="42"></rolling-number>\n\n<script>\n  RollingNumber.rollingNumber(document.querySelector('#n'), { value: 7 });\n<\/script>\n\n<!-- strict CSP: pass a nonce, or turn injection off and link the stylesheet -->\n<script src="https://unpkg.com/rolling-number" nonce="…"><\/script>\n<script src="https://unpkg.com/rolling-number" data-rn-inject="false"><\/script>`
     };
     const FW_NOTES = {
-      en: {
-        wc: 'Works in plain HTML and in any framework that renders custom elements. Types for JSX and Vue templates: rolling-number/jsx, rolling-number/vue-element.',
-        js: 'rolling-number/action has no side effects; import \'rolling-number\' also registers <rolling-number>.',
-        react: 'React 16.8+ (React 19 and Server Components included: the entry is marked "use client").',
-        vue: 'Vue 3. With SSR the directive renders role and aria-label on the server.',
-        angular: 'Angular 16+, standalone directive, runs outside NgZone. Inputs: rollingNumber, pad, max, interpolate, duration and rn* for the rest.',
-        svelte: 'The action follows Svelte semantics: update() receives the full option set.',
-        cdn: 'The IIFE build exposes RollingNumberCore, rollingNumber, configureRollingNumber, renderStaticText and more on window.RollingNumber.'
-      },
-      it: {
-        wc: 'Funziona in HTML puro e in ogni framework che renderizza custom element. Tipi per JSX e template Vue: rolling-number/jsx, rolling-number/vue-element.',
-        js: 'rolling-number/action non ha effetti collaterali; import \'rolling-number\' registra anche <rolling-number>.',
-        react: 'React 16.8+ (inclusi React 19 e i Server Components: l’entry è marcata "use client").',
-        vue: 'Vue 3. Con SSR la direttiva produce role e aria-label già dal server.',
-        angular: 'Angular 16+, direttiva standalone, gira fuori da NgZone. Input: rollingNumber, pad, max, interpolate, duration e rn* per il resto.',
-        svelte: 'L’azione segue la semantica di Svelte: update() riceve tutte le opzioni.',
-        cdn: 'La build IIFE espone RollingNumberCore, rollingNumber, configureRollingNumber, renderStaticText e altro su window.RollingNumber.'
-      }
+      en: { react: 'React 16.8+, React 19 and Server Components (the entry is marked "use client").', vue: 'Vue 3. The component exposes setValue / finish / whenSettled through template refs.', angular: 'Angular 16+, standalone, runs outside NgZone; strictTemplates checks every binding.', svelte: 'update() receives the full option set, as Svelte actions do.', wc: 'Types for JSX and Vue templates: rolling-number/jsx, rolling-number/vue-element.', cdn: 'The script build exposes window.RollingNumber.' },
+      it: { react: 'React 16.8+, React 19 e Server Components (l’entry è marcata "use client").', vue: 'Vue 3. Il componente espone setValue / finish / whenSettled tramite i template ref.', angular: 'Angular 16+, standalone, gira fuori da NgZone; strictTemplates controlla ogni binding.', svelte: 'update() riceve tutte le opzioni, come le azioni di Svelte.', wc: 'Tipi per JSX e template Vue: rolling-number/jsx, rolling-number/vue-element.', cdn: 'La build per script espone window.RollingNumber.' }
     };
-    let fw = 'wc';
-    function renderFramework() {
-      $('fwOut').textContent = FW[fw];
-      $('fwNote').textContent = FW_NOTES[lang][fw];
-    }
-    for (const b of document.querySelectorAll('#fwPanel [data-fw]')) {
-      b.addEventListener('click', () => { fw = b.dataset.fw; selectTabs($('fwPanel'), 'data-fw', fw); renderFramework(); });
-    }
+    tabs('fw', (k) => { $('fwOut').textContent = FW[k]; $('fwNote').textContent = FW_NOTES[lang][k]; });
 
-    // Live islands: the real React and Vue components.
     function ReactIsland() {
       const [count, setCount] = useState(42);
       return createElement('div', { style: { display: 'contents' } },
         createElement('div', null,
           createElement('div', { className: 'label' }, 'React · <RollingNumber>'),
           createElement(ReactRollingNumber, { value: count, pad: 3, className: 'big' })),
-        createElement('div', { className: 'btns' },
-          createElement('button', { type: 'button', onClick: () => setCount((c) => c - 7) }, '− 7'),
-          createElement('button', { type: 'button', onClick: () => setCount((c) => c + 7) }, '+ 7')));
+        createElement('div', { className: 'row' },
+          createElement('button', { type: 'button', className: 'btn sm', onClick: () => setCount((c) => c - 7) }, '− 7'),
+          createElement('button', { type: 'button', className: 'btn sm', onClick: () => setCount((c) => c + 7) }, '+ 7')));
     }
     createRoot($('reactIsland')).render(createElement(ReactIsland));
-
     createApp({
       setup() {
         const count = ref(1999);
         return () => [
-          h('div', null, [
-            h('div', { class: 'label' }, 'Vue · <RollingNumber>'),
-            h(VueRollingNumber, { value: count.value, locale: 'it-IT', format: { style: 'currency', currency: 'EUR' }, class: 'big' })
-          ]),
-          h('div', { class: 'btns' }, [
-            h('button', { type: 'button', onClick: () => (count.value -= 250) }, '− 250'),
-            h('button', { type: 'button', onClick: () => (count.value += 250) }, '+ 250')
+          h('div', null, [h('div', { class: 'label' }, 'Vue · <RollingNumber>'), h(VueRollingNumber, { value: count.value, locale: 'it-IT', format: { style: 'currency', currency: 'EUR' }, class: 'big' })]),
+          h('div', { class: 'row' }, [
+            h('button', { type: 'button', class: 'btn sm', onClick: () => (count.value -= 250) }, '− 250'),
+            h('button', { type: 'button', class: 'btn sm', onClick: () => (count.value += 250) }, '+ 250')
           ])
         ];
       }
     }).mount('#vueIsland');
 
-    // ── 5. Performance ────────────────────────────────────────
-    const stressElements = [];
+    // ── Performance ────────────────────────────────────────
+    const stress = [];
     for (let i = 0; i < 100; i++) {
       const cell = document.createElement('div');
       cell.className = 'stress-cell';
       const rn = document.createElement('rolling-number');
-      rn.value = Math.floor(Math.random() * 99);
+      rn.value = rand(0, 99);
       rn.pad = 2;
-      cell.appendChild(rn);
-      $('stressContainer').appendChild(cell);
-      stressElements.push(rn);
+      cell.append(rn);
+      $('stressContainer').append(cell);
+      stress.push(rn);
     }
-    const randomizeAll = () => { for (const el of stressElements) el.value = Math.floor(Math.random() * 99); };
+    const randomizeAll = () => { for (const el of stress) el.value = rand(0, 99); };
     $('btnStressRandomize').addEventListener('click', randomizeAll);
     let stressTimer = null;
     $('btnStressAuto').addEventListener('click', () => {
-      if (stressTimer) {
-        clearInterval(stressTimer);
-        stressTimer = null;
-      } else {
-        randomizeAll();
-        stressTimer = setInterval(randomizeAll, 700);
-      }
-      $('btnStressAuto').textContent = t(stressTimer ? 'btnStressAutoStop' : 'btnStressAutoStart');
+      if (stressTimer) { clearInterval(stressTimer); stressTimer = null; } else { randomizeAll(); stressTimer = setInterval(randomizeAll, 700); }
+      $('btnStressAuto').textContent = t(stressTimer ? 'stressStop' : 'stressStart');
     });
 
     applyOptions();
-    renderFramework();
+    route();
   </script>
 </body>
 </html>
