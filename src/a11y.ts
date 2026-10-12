@@ -13,19 +13,24 @@
  *   in them, and are removed when the count reaches 0 or the container is
  *   found disconnected (checked on each announce and release).
  * - `announce` is debounced 300 ms per host (the last text and politeness
- *   win). The region is cleared, then the text is set on the next task; texts
- *   flushed before that task are joined with ", ". `aria-live` follows the
- *   latest announcement.
+ *   win), with a 1 s max wait: a host updated faster than every 300 ms still
+ *   announces about once per second. The region is cleared, then the text is
+ *   set on the next task; texts flushed before that task are joined with
+ *   ", ". `aria-live` follows the latest announcement.
  * - Timers use the host's `defaultView`; without one, nothing is announced.
+ * - The region map lives in a global slot, so every copy of the package (ESM,
+ *   CJS, IIFE) shares one region per container.
  *
  * @internal
  * @module
  */
+import { slot } from './styles';
 
 type Politeness = 'polite' | 'assertive';
 type View = Window & typeof globalThis;
 
 const DEBOUNCE_MS = 300;
+const MAX_WAIT_MS = 1000;
 const CONTAINER_SELECTOR = 'dialog,[aria-modal="true"]';
 
 /** Visually hidden, still exposed to assistive technology. */
@@ -59,10 +64,11 @@ interface Region {
 /** A retained host and the region it currently counts in. */
 interface Binding { refs: number; region: Region; }
 
-/** A host's debounced announcement. */
-interface Pending { view: View; timer: number; }
+/** A host's debounced announcement; `since` = when its burst of updates started (max wait). */
+interface Pending { view: View; timer: number; since: number; }
 
-const regions = new WeakMap<Element, Region>();
+/** Regions by container, shared by every copy of the package. */
+const regionMap = (): WeakMap<Element, Region> => slot('regions', () => new WeakMap());
 const bindings = new WeakMap<Element, Binding>();
 const pendings = new WeakMap<Element, Pending>();
 
@@ -91,6 +97,7 @@ function containerOf(host: Element): Element | null {
 }
 
 function regionFor(container: Element): Region {
+  const regions = regionMap();
   let region = regions.get(container);
   if (!region) {
     region = { container, el: null, count: 0, queue: [], timer: null, view: null, dead: false };
@@ -130,7 +137,14 @@ function dropRegion(region: Region): void {
   const el = region.el;
   region.el = null;
   if (el && el.parentNode) el.parentNode.removeChild(el);
+  const regions = regionMap();
   if (regions.get(region.container) === region) regions.delete(region.container);
+}
+
+/** Drops the region of a container found disconnected. */
+function dropStale(container: Element): void {
+  const stale = regionMap().get(container);
+  if (stale) dropRegion(stale);
 }
 
 /** Drops the region when its container is disconnected; returns whether it is still usable. */
@@ -184,8 +198,7 @@ function flush(host: Element, text: string, politeness: Politeness): void {
   const container = containerOf(host);
   if (!container) return;
   if (!container.isConnected) {
-    const stale = regions.get(container);
-    if (stale) dropRegion(stale);
+    dropStale(container);
     return;
   }
   const binding = bindings.get(host);
@@ -238,23 +251,23 @@ export function retainAnnouncer(host: Element): () => void {
 
 /**
  * Announces `text` for `host` through its container's live region, debounced
- * 300 ms per host (the last text and politeness win). Empty texts announce
- * nothing (they still replace a pending text).
+ * 300 ms per host (the last text and politeness win) with a 1 s max wait, so
+ * a host updated faster than every 300 ms still announces about once per
+ * second. Empty texts announce nothing (they still replace a pending text).
  */
 export function announce(host: Element, text: string, politeness: Politeness): void {
   const view = viewOf(host);
   if (!view) return;
   const container = containerOf(host);
-  if (container && !container.isConnected) {
-    const stale = regions.get(container);
-    if (stale) dropRegion(stale);
-  }
+  if (container && !container.isConnected) dropStale(container);
+  const now = Date.now();
+  const since = pendings.get(host)?.since ?? now;
   cancelPending(host);
   const tone: Politeness = politeness === 'assertive' ? 'assertive' : 'polite';
   const message = String(text);
   const timer = view.setTimeout(() => {
     pendings.delete(host);
     if (message) flush(host, message, tone);
-  }, DEBOUNCE_MS);
-  pendings.set(host, { view, timer });
+  }, Math.max(0, Math.min(DEBOUNCE_MS, since + MAX_WAIT_MS - now)));
+  pendings.set(host, { view, timer, since });
 }

@@ -218,6 +218,29 @@ describe('announcer: ref-count and removal', () => {
   });
 });
 
+describe('announcer: copies of the package', () => {
+  // An ESM copy next to a CJS or IIFE copy must not create a second region in a container.
+  it('shares one region per container with another copy of the module', async () => {
+    const a = makeHost();
+    const b = makeHost();
+    const releaseA = retain(a);
+    vi.resetModules();
+    const copy = await import('../src/a11y');
+    expect(copy.announce).not.toBe(announce);
+    const releaseB = copy.retainAnnouncer(b);
+    releases.push(releaseB);
+    expect(regionsIn(document.body)).toHaveLength(1);
+    announce(a, 'one', 'polite');
+    copy.announce(b, 'two', 'polite');
+    settle();
+    expect(regionsIn(document.body).map((r) => r.textContent)).toEqual(['one, two']);
+    releaseA();
+    expect(regionsIn(document.body)).toHaveLength(1);
+    releaseB();
+    expect(regionsIn(document.body)).toHaveLength(0);
+  });
+});
+
 describe('announcer: debounce and text', () => {
   it('debounces 300 ms per host; the last text wins', () => {
     const host = makeHost();
@@ -230,6 +253,28 @@ describe('announcer: debounce and text', () => {
     expect(region.textContent).toBe('');
     vi.advanceTimersByTime(2);
     expect(region.textContent).toBe('b');
+  });
+
+  it('caps the debounce at 1 s: a host updated every 100 ms still announces about once per second; the last text wins', () => {
+    const host = makeHost();
+    retain(host);
+    const region = regionsIn(document.body)[0];
+    const seen: string[] = [];
+    for (let i = 1; i <= 30; i++) {
+      announce(host, 'v' + i, 'polite');
+      vi.advanceTimersByTime(100);
+      const text = region.textContent ?? '';
+      if (text && seen[seen.length - 1] !== text) seen.push(text);
+    }
+    expect(seen).toEqual(['v10', 'v20']);
+    settle();
+    expect(region.textContent).toBe('v30');
+    // A new burst after the flush starts its own 300 ms debounce.
+    announce(host, 'w', 'polite');
+    vi.advanceTimersByTime(299);
+    expect(region.textContent).toBe('v30');
+    settle();
+    expect(region.textContent).toBe('w');
   });
 
   it('debounces each host independently', () => {
