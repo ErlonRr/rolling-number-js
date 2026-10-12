@@ -4,7 +4,68 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Ids such as `B15` or `I05` refer to the findings in [`docs/AUDIT.md`](./docs/AUDIT.md).
 
-## [Unreleased] — 1.2.2
+## [Unreleased] — 1.3.0
+
+Minor release. Every 1.x option, default, export path, the `<rolling-number>` tag, the documented CSS classes and the CSS variables are kept. The visual changes listed under **Changed** fix audit bugs; the behavior changes S1–S6 are those of [`docs/design/v1.3.md`](./docs/design/v1.3.md) §0.
+
+### Added
+
+**Animation**
+- A continuous odometer: one shared `requestAnimationFrame` engine drives counting and rolling for every counter of a window (read → write → flush → post phases). Carries roll in windows proportional to the speed, fast low-order digits run as speed-limited reels, and every change starts from what is on screen, with velocity-continuous retargets (B06, I01).
+- `easing` option: presets (`linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `ease-out-cubic`, `ease-in-out-cubic`, `ease-out-quart`, `ease-out-expo`, `odometer`), CSS easings (`cubic-bezier()`, `linear()`, `steps()`) or a function.
+- Per-call motion: `setValue(v, { motion: 'count' | 'roll' | 'none', duration, easing })`.
+- `from` (intro value at creation) and `trigger: 'visible'` (animations wait until the counter is on screen, one shared `IntersectionObserver`). The element never replays its intro when it is moved (B39, partial).
+
+**Formatting**
+- `locale` and `format` (Intl currency, percent, unit, `signDisplay`, `useGrouping`, `numberingSystem`, native digits), `decimals`, `prefixText`, `suffixText`, and `overflowSuffix` for `99+` badges. The value is quantized from Intl's own output, so the columns, the text and the label always agree.
+
+**API**
+- `setValue()` returns `Promise<{ value, completed }>` (never rejects), plus `whenSettled()`, `finish()`, `getDisplayValue()`, `getText()`, `getMode()` and `getHost()` (I24).
+- `rn-start` / `rn-end` events (bubbling, composed, typed through `ElementEventMap`), delivered by the element and every adapter.
+- `label` (string with `{value}` or a function) and `live` (shared, debounced live region per page or open modal) (B28, partial).
+- `mode`: text mode for text-like `<input>`, `<textarea>`, `<option>` and SVG `<text>`/`<tspan>`/`<textPath>`. It never dispatches `input`/`change` and never writes into a focused control (B05).
+- The generic `rollingNumber(node, param)` action (Svelte `use:` compatible; Solid, Lit, Alpine) and the side-effect-free `rolling-number/action` entry.
+- SSR helpers `renderStaticText` / `renderStaticHTML` (also in the DOM-free `rolling-number/ssr` entry), adoption of a `[data-rn-ssr]` fallback by the client, React/Vue `staticFallback`, Vue `getSSRProps` with role and label, Angular template fallback deferred to `afterNextRender`.
+- Script-tag build `rolling-number/iife` (`unpkg`/`jsdelivr` fields, global `RollingNumber`, `nonce` and `data-rn-inject="false"` read from the script tag).
+
+**Styles**
+- Automatic style injection: one constructable stylesheet per document, adopted by every document or shadow root that hosts a counter, in `@layer rolling-number` where supported, with a `<style>` fallback (CSP `nonce`). `configureRollingNumber({ injectStyles, nonce })`, `injectRollingNumberStyles(root)` and the per-counter `injectStyles` option.
+- `--rn-fill` (glyph gradients, C1), `--rn-bleed` (glows and overhangs, C2) and `--rn-decoration` (underline/line-through that stays still while rolling, C3).
+- Public hooks: `.rn-static[data-rn-part]` tokens, `data-rn-key` on every owned node, `data-rn-lead`, `data-rn-in` with `--rn-in`/`--rn-w`, `data-rn-zero`, `.rn-ssr[data-rn-ssr]`.
+
+**Bindings**
+- Element: every option as an attribute and a typed property (`prefix-text`, `suffix-text`, `overflow-suffix`, `inject-styles`, JSON `format`, the boolean `no-interpolate`), `setValue()`/`whenSettled()`/`finish()`/`getDisplayValue()`.
+- React: every option as a prop, `onRnStart`/`onRnEnd`, `coreRef`, `staticFallback`. Vue: every option as a prop, typed `@rn-start`/`@rn-end`, an exposed API through template refs, directive `target`. Angular: `rn*` inputs for every option (and aliases of the 1.x ones), `rnTarget`, `(rnStart)`/`(rnEnd)` outputs, `exportAs: 'rollingNumber'`.
+- Typings: new attributes in `rolling-number/jsx` and `rolling-number/vue-element`, the manifest and the VS Code data (events, CSS properties, value sets).
+
+**Tooling**
+- Playwright visual suite on the built package (Chromium, Firefox, WebKit; `pnpm test:visual`), a bundle size gate (`pnpm size`), `check:vue-types`, and CI (`check`, `visual`, nightly `compat` against React 18/19, Vue 3.3/3.5 and Angular 16/latest).
+
+### Changed
+- Counting rolls the digit columns continuously instead of swapping digits (B06, I01).
+- `9 → 0` rolls forward through a wrap cell (`.rn-scale::after`) instead of back through `8…1` (B19).
+- Columns are keyed from the right: on `99 → 100` the units and tens stay and the hundreds enters on the left (B18).
+- New columns, the sign and other tokens grow and fade in or out instead of popping (B34).
+- Column widths no longer depend on the digit shown (`.rn-col` is an `inline-grid`; I07).
+- S1: `setValue()` returns a promise instead of `void`.
+- S2: `update({ duration: null })` / `setDuration(null)` return to the automatic duration (1.2 kept the previous value).
+- S3: rolls (`interpolate: false`, `setValue(v, false)`, `duration: 0`) are driven by JavaScript: they request frames, set `data-rn-state`/`.rn-interpolating`, and `isAnimating()` is `true` while they run; the DOM is final at `rn-end`. No CSS transition animates the digits any more.
+- S4: with `duration`/`easing` unset, a non-default `--rn-duration`/`--rn-easing` also times counting; `--rn-duration: 0s` still disables only the roll (B33).
+- S5: an explicit `duration > 0` also times rolls (B33).
+- S6: mid-count, `data-digit` is per column (`round(position) mod 10`); it is exact at rest.
+- `<input>`/`<textarea>` hosts render in text mode instead of invisible columns; `mode: 'columns'` restores 1.2 (B05).
+- The element, React, Vue and Angular pass "unset" (not `400`) when `duration`/`easing` are absent; the `duration` getters still return `400`.
+- `RN_DEFAULTS` and `normalizeOptions` keep their 1.2 shapes as compatibility shims.
+
+### Fixed
+- The first frame of every motion starts from the displayed state, so starting or retargeting never jumps (B32 follow-up, §5.5).
+- The settle frame flushes styles before the animating markers go away, so user transitions or a stylesheet pinned at 1.2 do not replay (B17). Firefox still replays them: see the `test.fixme` in `tests/visual/styles.spec.ts`.
+- The core never writes `--rn-duration`/`--rn-easing` (I23); the timing is read from the computed style, also inside shadow roots.
+
+### Deprecated
+- Nothing.
+
+## [1.2.2] — unreleased
 
 Patch release: bug fixes only. Every public API, option name, default, export path, the `<rolling-number>` tag, the CSS class names and the `--rn-duration`/`--rn-easing` variables are unchanged.
 
