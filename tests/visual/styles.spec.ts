@@ -156,6 +156,34 @@ test.describe('IIFE script tag, no stylesheet link', () => {
   });
 });
 
+test.describe('IIFE in <head>, server-rendered <rolling-number> in the body', () => {
+  // The parser connects the element (and its core starts) before it parses the fallback child.
+  test('the fallback child parsed after the element connected is adopted: hidden, columns after it', async ({ page }) => {
+    await openStage(page, '/fixtures/iife-head-ssr.html');
+    for (const [id, digits] of [['child', '42'], ['full', '1234']] as const) {
+      const el = page.locator('#' + id);
+      const state = await el.evaluate((node) => {
+        const fallback = node.querySelector(':scope > [data-rn-ssr]')!;
+        const cols = Array.from(node.querySelectorAll(':scope > .rn-col'));
+        return {
+          hidden: fallback.hasAttribute('hidden'),
+          display: getComputedStyle(fallback).display,
+          before: cols.every((col) => !!(fallback.compareDocumentPosition(col) & Node.DOCUMENT_POSITION_FOLLOWING))
+        };
+      });
+      expect(state).toEqual({ hidden: true, display: 'none', before: true });
+      expect(await visibleDigits(el)).toBe(digits);
+    }
+    const el = page.locator('#child');
+    const events = await recordEvents(el);
+    await el.evaluate((node) => ((node as HTMLElement & { value: number }).value = 43));
+    expect((await events.waitForEnd(page)).value).toBe(43);
+    expect(await visibleDigits(el)).toBe('43');
+    expect(await el.evaluate((node) => node.querySelector('[data-rn-ssr]')!.hasAttribute('hidden'))).toBe(true);
+    expect(await leftovers(el)).toEqual([]);
+  });
+});
+
 test.describe('style.css together with the injected sheet', () => {
   test('renders pixel-identically to the injected sheet alone, at rest and mid-motion', async ({ page, context }) => {
     const other = await context.newPage();

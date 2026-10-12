@@ -784,6 +784,56 @@ describe('columns renderer: SSR adoption', () => {
     setup(restOf(1), c, false);
     expect(c.firstElementChild!.hasAttribute('hidden')).toBe(false);
   });
+
+  const fallbackEl = (text: string): HTMLElement => {
+    const el = document.createElement('span');
+    el.className = 'rn-ssr';
+    el.setAttribute('data-rn-ssr', '');
+    el.textContent = text;
+    return el;
+  };
+
+  it.each(['rest', 'begin'] as const)('adopts a fallback added after mount at the next %s() and moves the block after it', (call) => {
+    const host = makeHost('span');
+    const { r } = setup(restOf(42), host, true);
+    const fallback = host.appendChild(fallbackEl('42'));
+    if (call === 'rest') r.rest(restOf(42));
+    else r.begin(motion(42, 43), 'count', restOf(43));
+    expect(fallback.hasAttribute('hidden')).toBe(true);
+    expect(host.firstElementChild).toBe(fallback);
+    expect(keys(host)).toEqual(['i1', 'i0']);
+    r.destroy();
+    expect(fallback.hasAttribute('hidden')).toBe(false);
+    expect(host.childNodes.length).toBe(1);
+  });
+
+  it('while the document is loading, adopts a fallback the parser appends after mount (no further call)', async () => {
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+    const host = makeHost('rolling-number');
+    setup(restOf(42), host, true);
+    const fallback = host.appendChild(fallbackEl('42'));
+    host.appendChild(document.createTextNode('\n'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fallback.hasAttribute('hidden')).toBe(true);
+    expect(host.firstElementChild).toBe(fallback);
+    expect(keys(host)).toEqual(['i1', 'i0']);
+    expect(host.lastChild!.nodeType).toBe(3);
+  });
+
+  it('adopts at most one fallback, and never with adopt = false', () => {
+    const a = makeHost('span');
+    a.appendChild(fallbackEl('1'));
+    const { r } = setup(restOf(1), a, true);
+    const late = a.appendChild(fallbackEl('2'));
+    r.rest(restOf(1));
+    expect(late.hasAttribute('hidden')).toBe(false);
+
+    const b = makeHost('span');
+    const rb = setup(restOf(1), b, false).r;
+    const other = b.appendChild(fallbackEl('1'));
+    rb.rest(restOf(1));
+    expect(other.hasAttribute('hidden')).toBe(false);
+  });
 });
 
 describe('columns renderer: realm safety', () => {

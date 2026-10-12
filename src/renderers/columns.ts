@@ -126,6 +126,10 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
   /** adopted SSR fallback and whether it already had `hidden` */
   let adopted: Element | null = null;
   let adoptedWasHidden = false;
+  /** mount() asked for adoption: a fallback added later is adopted too, until the first one */
+  let adoptWanted = false;
+  /** watches the host's children while the document is still being parsed */
+  let watcher: MutationObserver | null = null;
 
   /** motion state (between begin() and rest()) */
   let moving = false;
@@ -141,14 +145,29 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
 
   // ── nodes ─────────────────────────────────────────────────────────────
 
-  /** Hides a direct `[data-rn-ssr]` child (restored on destroy). */
+  const unwatch = (): void => {
+    watcher?.disconnect();
+    watcher = null;
+  };
+
+  /**
+   * Hides a direct `[data-rn-ssr]` child (restored on destroy) and keeps the
+   * owned block after it. Runs at mount, then (until a fallback is adopted)
+   * from begin()/rest() and while the parser may still append children: a
+   * parsed `<rolling-number>` is connected, and its core created, before its
+   * fallback child exists.
+   */
   const adopt = (): void => {
-    for (let child = host.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 1 && (child as Element).hasAttribute('data-rn-ssr')) {
-        const el = child as Element;
+    if (!adoptWanted || adopted) return;
+    for (let el = host.firstElementChild; el; el = el.nextElementSibling) {
+      if (el.hasAttribute('data-rn-ssr')) {
         adopted = el;
         adoptedWasHidden = el.hasAttribute('hidden');
         if (!adoptedWasHidden) el.setAttribute('hidden', '');
+        unwatch();
+        let ref = el.nextSibling;
+        while (ref && owned.has(ref)) ref = ref.nextSibling;
+        reorder(seq, ref);
         return;
       }
     }
@@ -378,6 +397,7 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
 
   const rest = (r: RestState): void => {
     if (destroyed) return;
+    adopt();
     glyphs = r.glyphs;
     moving = unmeasured = false;
     signMode = 'sigma';
@@ -440,7 +460,16 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
       if (destroyed) return;
       if (!mounted) {
         mounted = true;
-        if (adoptFallback) adopt();
+        adoptWanted = adoptFallback;
+        adopt();
+        const MO = doc.defaultView?.MutationObserver;
+        if (adoptWanted && !adopted && doc.readyState === 'loading' && MO) {
+          watcher = new MO(() => {
+            adopt();
+            if (doc.readyState !== 'loading') unwatch();
+          });
+          watcher.observe(host, { childList: true });
+        }
       }
       rest(r);
     },
@@ -454,6 +483,7 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
 
     begin(motion: MotionLayout, kind: 'count' | 'roll', target: RestState): void {
       if (destroyed) return;
+      adopt();
       glyphs = target.glyphs;
       const roll = kind === 'roll';
       const prevSign = signNode();
@@ -677,6 +707,7 @@ export function createColumnsRenderer(host: Element, doc: Document, fmt: Formatt
       if (destroyed) return;
       destroyed = true;
       moving = false;
+      unwatch();
       for (const node of seq) node.el.remove();
       seq = [];
       byKey.clear();
