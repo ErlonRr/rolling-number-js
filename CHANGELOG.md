@@ -39,6 +39,7 @@ Minor release. Every 1.x option, default, export path, the `<rolling-number>` ta
 - Typings: new attributes in `rolling-number/jsx` and `rolling-number/vue-element`, the manifest and the VS Code data (events, CSS properties, value sets).
 
 **Tooling**
+- New demo page: a playground with every option and the matching code for HTML, JavaScript, React, Vue, Angular and Svelte, a gallery of host elements, the CSS variables and live React/Vue islands (`pnpm dev`).
 - Playwright visual suite on the built package (Chromium, Firefox, WebKit; `pnpm test:visual`), a bundle size gate (`pnpm size`), `check:vue-types`, and CI (`check`, `visual`, nightly `compat` against React 18/19, Vue 3.3/3.5 and Angular 16/latest).
 
 ### Changed
@@ -56,10 +57,11 @@ Minor release. Every 1.x option, default, export path, the `<rolling-number>` ta
 - `<input>`/`<textarea>` hosts render in text mode instead of invisible columns; `mode: 'columns'` restores 1.2 (B05).
 - The element, React, Vue and Angular pass "unset" (not `400`) when `duration`/`easing` are absent; the `duration` getters still return `400`.
 - `RN_DEFAULTS` and `normalizeOptions` keep their 1.2 shapes as compatibility shims.
+- Bundle size: with every 1.3 feature the root entry is about 21 KB min+gzip (1.2.2: 3.65 KB + 0.63 KB CSS); the framework bindings add 1–2.3 KB. The CI size gate keeps it there (owner-approved budgets, spec §10).
 
 ### Fixed
 - The first frame of every motion starts from the displayed state, so starting or retargeting never jumps (B32 follow-up, §5.5).
-- The settle frame flushes styles before the animating markers go away, so user transitions or a stylesheet pinned at 1.2 do not replay (B17). Firefox still replays them: see the `test.fixme` in `tests/visual/styles.spec.ts`.
+- The settle frame forces a layout before the animating markers go away, so user transitions or a stylesheet pinned at 1.2 do not replay (B17), also in Firefox, where a computed-style read did not restyle the digit columns.
 - The core never writes `--rn-duration`/`--rn-easing` (I23); the timing is read from the computed style, also inside shadow roots.
 
 ### Deprecated
