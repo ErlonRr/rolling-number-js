@@ -6,7 +6,8 @@
  * @module
  */
 import { RollingNumberCore } from './core';
-import { OPTION_KEYS } from './options';
+import { OPTION_KEYS, readOption } from './options';
+import { warn } from './internal/warn';
 import type { OptionKey } from './internal/contracts';
 import type { RollingNumberUpdate } from './types';
 
@@ -39,12 +40,7 @@ function toOptions(param: RollingNumberActionParam | undefined): FullOptions {
   const src = fields(param);
   const out = {} as FullOptions;
   for (const key of OPTION_KEYS) {
-    let raw: unknown;
-    try {
-      raw = src[key];
-    } catch {
-      raw = undefined;
-    }
+    const raw = readOption(src, key);
     out[key] = raw === undefined ? null : raw;
   }
   return out;
@@ -90,9 +86,7 @@ function resolveTarget(node: Element, target: unknown): Element {
       found = null;
     }
     if (found) return found;
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn(`[RollingNumber] rollingNumber(): target ${JSON.stringify(target)} matches nothing inside the node; using the node itself.`);
-    }
+    warn(`rollingNumber(): target ${JSON.stringify(target)} matches nothing inside the node; using the node itself.`);
     return node;
   }
   if (target !== null && typeof target === 'object' && (target as Partial<Element>).nodeType === 1) return target as Element;

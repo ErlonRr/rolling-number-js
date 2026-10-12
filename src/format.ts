@@ -19,6 +19,7 @@
 import type {
   DisplayState, Formatter, LayoutShape, MotionToken, NormalizedOptions, NumberLayout, Tie, Token, TokenRole
 } from './internal/contracts';
+import { warn } from './internal/warn';
 
 type NF = Intl.NumberFormat;
 type NFOptions = Record<string, unknown>;
@@ -44,7 +45,7 @@ const warned = new Set<string>();
 function warnOnce(id: string, message: string): void {
   if (warned.has(id)) return;
   warned.add(id);
-  if (typeof console != 'undefined' && typeof console.warn == 'function') console.warn('[RollingNumber] ' + message);
+  warn(message);
 }
 
 /**
@@ -451,7 +452,7 @@ export function resolveLabel(o: NormalizedOptions, f: Formatter, value: number, 
     } catch (e) {
       if (!warnedLabelFns.has(label)) {
         warnedLabelFns.add(label);
-        if (typeof console != 'undefined' && typeof console.warn == 'function') console.warn('[RollingNumber] label function threw; using the default label.', e);
+        warn('label function threw; using the default label.', e);
       }
     }
   }

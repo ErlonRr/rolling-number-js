@@ -18,6 +18,7 @@ import type {
   RollingNumberMode, RollingNumberOptions, RollingNumberTrigger, RollingNumberUpdate
 } from './types';
 import type { NormalizedOptions, OptionKey } from './internal/contracts';
+import { warn } from './internal/warn';
 
 /** Every option name, in the order adapters apply them (`value` stays last in `update()`). */
 export const OPTION_KEYS = [
@@ -81,6 +82,15 @@ export const RN_DEFAULTS_13: Readonly<NormalizedOptions> = Object.freeze({
 export const MAX_PAD = 64;
 /** Upper bound for `decimals` (the Intl limit). */
 export const MAX_DECIMALS = 20;
+
+/** `src[key]`, or `undefined` when reading it throws (hostile getters and proxies are tolerated). */
+export function readOption(src: Record<string, unknown>, key: string): unknown {
+  try {
+    return src[key];
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Converts loose input to a number. null, undefined, blank strings and
@@ -190,10 +200,10 @@ export function normalizeFormat(input: unknown): RollingNumberFormat | null {
       obj = null;
     }
     if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
-      if (!warnedFormatJson && typeof console !== 'undefined' && typeof console.warn === 'function') {
+      if (!warnedFormatJson) {
         warnedFormatJson = true;
-        console.warn(
-          `[RollingNumber] Ignoring format ${JSON.stringify(s.slice(0, 60))}: expected a JSON object such as ` +
+        warn(
+          `Ignoring format ${JSON.stringify(s.slice(0, 60))}: expected a JSON object such as ` +
             '{"style":"currency","currency":"EUR"}. With React 19, define <rolling-number> before rendering ' +
             'so the property (not the attribute) receives the object.'
         );
@@ -276,12 +286,7 @@ export function resolveOptions(o: RollingNumberUpdate | null | undefined): Norma
   const src = (o !== null && typeof o === 'object' ? o : {}) as Record<string, unknown>;
   const out = { ...RN_DEFAULTS_13 } as NormalizedOptions;
   for (const key of OPTION_KEYS) {
-    let raw: unknown;
-    try {
-      raw = src[key];
-    } catch {
-      raw = undefined;
-    }
+    const raw = readOption(src, key);
     if (raw === undefined || raw === null) continue;
     (out as Record<OptionKey, unknown>)[key] = NORMALIZERS[key](raw);
   }

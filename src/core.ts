@@ -16,6 +16,7 @@ import {
   normalizeMax,
   normalizePad,
   normalizeValue,
+  readOption,
   resolveOptions,
   toNumber
 } from './options';
@@ -28,6 +29,7 @@ import { createTextRenderer, resolveMode } from './renderers/text';
 import { ensureStyles } from './styles';
 import { announce, retainAnnouncer } from './a11y';
 import { observeVisibility } from './visibility';
+import { warn } from './internal/warn';
 
 export type { RollingNumberOptions, RollingNumberUpdate } from './types';
 
@@ -282,13 +284,11 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
     res = resolveMode(host, opts.mode);
     if (res !== 'text' && resolveMode(host, 'auto') !== 'columns' && !warnedHosts.has(host)) {
       warnedHosts.add(host);
-      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn(
-          `[RollingNumber] <${(host.localName || '').toLowerCase()}> is not a supported host in 1.x: the digit columns are ` +
-            'inserted as child nodes, which this element does not render. Use a container ' +
-            'element such as <span> or <div> instead.'
-        );
-      }
+      warn(
+        `<${(host.localName || '').toLowerCase()}> is not a supported host in 1.x: the digit columns are ` +
+          'inserted as child nodes, which this element does not render. Use a container ' +
+          'element such as <span> or <div> instead.'
+      );
     }
     if (res === 'unsupported') return;
     renderer = (res === 'text' ? createTextRenderer : createColumnsRenderer)(host, doc, fmt);
@@ -619,14 +619,9 @@ function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, o
       const src = (input ?? {}) as Record<string, unknown>;
       const before = opts;
       const next = { ...before };
-      let raw: unknown;
       let nextValue: unknown;
       for (const key of OPTION_KEYS) {
-        try {
-          raw = src[key];
-        } catch {
-          raw = undefined;
-        }
+        const raw = readOption(src, key);
         // `from` is stored (getResolved) but creation-only: it never replays the intro.
         if (key === 'value') nextValue = raw;
         else (next as Record<string, unknown>)[key] = normalizeField(key, raw, before);

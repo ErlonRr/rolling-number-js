@@ -9,6 +9,7 @@
 import type { RollingNumberEasing } from '../types';
 import type { Easing, NormalizedOptions, RollingNumberSetValueOptions, Timing, TimingProbe } from '../internal/contracts';
 import { isDefaultCssEasing, peakSlope, PRESETS, toEasing } from './easing';
+import { warn } from '../internal/warn';
 
 /** Default of `--rn-easing` as browsers normalize it. */
 export const DEFAULT_CSS_EASING = 'cubic-bezier(0.2, 1, 0.3, 1)';
@@ -64,9 +65,7 @@ function userEasing(e: RollingNumberEasing | null | undefined): Easing | null {
     if (warnedStrings.size >= 256) warnedStrings.clear(); // bounded memory
     warnedStrings.add(key);
   }
-  console.warn(
-    `[RollingNumber] Invalid easing ${typeof e === 'function' ? '(function)' : JSON.stringify(String(e))}; the default easing is used.`
-  );
+  warn(`Invalid easing ${typeof e === 'function' ? '(function)' : JSON.stringify(String(e))}; the default easing is used.`);
   return null;
 }
 

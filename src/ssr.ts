@@ -8,7 +8,7 @@
  * @module
  */
 import type { RollingNumberOptions, RollingNumberUpdate } from './types';
-import { OPTION_ATTRIBUTES, OPTION_KEYS, resolveOptions } from './options';
+import { OPTION_ATTRIBUTES, OPTION_KEYS, readOption, resolveOptions } from './options';
 import { createFormatter, resolveLabel } from './format';
 
 /** Tags accepted by {@link renderStaticHTML}. */
@@ -165,12 +165,7 @@ export function renderStaticHTML(
   if (tag === 'rolling-number') {
     const src = (options ?? {}) as Record<string, unknown>;
     for (const key of OPTION_KEYS) {
-      let raw: unknown;
-      try {
-        raw = src[key];
-      } catch {
-        raw = undefined;
-      }
+      const raw = readOption(src, key);
       if (raw === undefined || raw === null) continue;
       const value = optionAttrValue(raw);
       if (value !== null) list.push([OPTION_ATTRIBUTES[key], value]);
