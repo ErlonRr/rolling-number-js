@@ -3,7 +3,9 @@
  * (docs/design/v1.3.md §5, §3.3). Owned by WP1. Port of the verified
  * prototype (§14) with the revision-2 fixes of §15: count plans clamp
  * q = E(p) to [0, 1]; the sign channel is ≡ 0 without a negative endpoint;
- * the retarget ΔA uses the clamped target.
+ * the retarget ΔA uses the clamped target. Count presence (`inn` of a place
+ * beyond pad) ramps over at least v_peak·τ_s units instead of the carry
+ * window, so entering / leaving columns never pop (still exact at both ends).
  *
  * Units (§5.1): A is a signed scalar in last-digit units, M = |A| clamped
  * by Amax, place k = 0 is the last displayed digit, P_k = 10^k.
@@ -159,6 +161,8 @@ export function plan(input: PlanInput): Plan {
   /** Sign / overflow fade windows (units), and the overflow's linear fallback. */
   const Ws = clamp(vPeak * TAU_S, 1, negCap);
   const Wo = clamp(vPeak * TAU_S, 1, Math.max(1, dist));
+  /** Minimum presence ramp of an entering / leaving place (units). */
+  const Wp = Math.max(1, vPeak * TAU_S);
   const oLinear = o0 !== o1 && dist < 1;
 
   // Per-place constants.
@@ -190,6 +194,19 @@ export function plan(input: PlanInput): Plan {
 
   /** Leading-zero place of a count plan at magnitude M (§5.4): integer place j = k − f ≥ pad and M < 10^k. */
   const countLead = (k: number, M: number): boolean => k - f >= pad && M < P[k];
+
+  // Presence of a place beyond pad (count): a ramp from inA to inB along u, at
+  // least Wp = v_peak·τ_s wide (no pop), ending at 10^k unless an endpoint
+  // caps it (exact at both ends). u = M, except for a place present at exactly
+  // one end of a crossing plan: u = inS·A, monotone along the motion.
+  const inA = new Float64Array(n);
+  const inB = new Float64Array(n);
+  const inS = new Float64Array(n);
+  /** Raw presence of place k at the display scalar A (M = |A|), count plans. */
+  const countInn = (k: number, A: number, M: number): number => {
+    const u = inS[k] ? inS[k] * A : M;
+    return k - f < pad || u >= inB[k] ? 1 : clamp01((u - inA[k]) / (inB[k] - inA[k]));
+  };
 
   /** Raw (un-remapped) sign presence. */
   const rawSigma = (q: number, A: number): number => {
@@ -229,6 +246,16 @@ export function plan(input: PlanInput): Plan {
       continue;
     }
 
+    // Presence ramp: it starts after the largest endpoint u where the place is
+    // absent and ends by the smallest one where it is present (exact ends).
+    const in0 = M0 >= Pk;
+    const in1 = M1 >= Pk;
+    const sg = (inS[k] = cross && in0 !== in1 ? Math.sign(in0 ? A0 : A1) : 0);
+    const u0 = sg ? sg * A0 : M0;
+    const u1 = sg ? sg * A1 : M1;
+    inA[k] = Math.max(in0 ? -Infinity : u0, in1 ? -Infinity : u1, Pk - Wp);
+    inB[k] = Math.min(inA[k] + Wp, in0 ? u0 : Infinity, in1 ? u1 : Infinity);
+
     // §5.3: speed-limited reels (a reel stays a reel on a count → count retarget).
     const T = cross ? X(M0, k, Pk, 1) + X(M1, k, Pk, 1) : Math.abs(X(M1, k, Pk, 1) - X(M0, k, Pk, 1));
     const wasReel = input.prevKind === 'count' && display !== null && k < display.reel.length && !!display.reel[k];
@@ -266,8 +293,8 @@ export function plan(input: PlanInput): Plan {
         const dp = k < disp.pos.length ? Number(disp.pos[k]) : NaN;
         d0pos[k] = Number.isFinite(dp) ? e0 + wrap5(dp - e0) : e0;
       }
-      s0inn[k] = countLead(k, M0) ? clamp01(e0) : 1;
-      s1inn[k] = countLead(k, M1) ? clamp01(e1) : 1;
+      s0inn[k] = countInn(k, A0, M0);
+      s1inn[k] = countInn(k, A1, M1);
     }
     const di = k < disp.inn.length ? Number(disp.inn[k]) : 0;
     d0inn[k] = Number.isFinite(di) ? di : 0;
@@ -311,9 +338,8 @@ export function plan(input: PlanInput): Plan {
             pos[k] = remap(ex, s0pos[k], s1pos[k], d0pos[k], q, mono);
             reel[k] = 0;
           }
-          const isLead = countLead(k, M);
-          lead[k] = isLead ? 1 : 0;
-          innv = isLead ? clamp01(ex) : 1;
+          lead[k] = countLead(k, M) ? 1 : 0;
+          innv = countInn(k, A, M);
         }
         inn[k] = clamp01(remap(innv, s0inn[k], s1inn[k], d0inn[k], q, mono));
       }

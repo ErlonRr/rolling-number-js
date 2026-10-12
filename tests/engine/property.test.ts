@@ -278,3 +278,72 @@ describe('odometer property (e): default timing', () => {
     expect(st.maxStep).toBeLessThanOrEqual(2.5);
   });
 });
+
+describe('odometer property (f): entering and leaving places never pop', () => {
+  const countE = toEasing('ease-out-cubic') as Easing;
+  const FRAME = 1000 / 60;
+
+  /** Largest per-frame change of any inn channel and of their sum, and the number of frames where the sum changes. */
+  function presenceSteps(pl: Plan): { maxInn: number; maxSum: number; growthFrames: number } {
+    const frames = Math.ceil(pl.D / FRAME);
+    let prev = Array.from(sample(pl, 0).inn);
+    let maxInn = 0;
+    let maxSum = 0;
+    let growthFrames = 0;
+    for (let i = 1; i <= frames; i++) {
+      const inn = Array.from(sample(pl, Math.min(1, (i * FRAME) / pl.D)).inn);
+      let sum = 0;
+      for (let k = 0; k < pl.n; k++) {
+        const d = inn[k] - prev[k];
+        maxInn = Math.max(maxInn, Math.abs(d));
+        sum += d;
+      }
+      maxSum = Math.max(maxSum, Math.abs(sum));
+      if (Math.abs(sum) > 1e-9) growthFrames++;
+      prev = inn;
+    }
+    return { maxInn, maxSum, growthFrames };
+  }
+
+  it('0 → 12,345 with the default timing: the four new columns grow over several frames', () => {
+    const pl = plan({ kind: 'count', A0: 0, A1: 12345, Amax: Infinity, f: 0, pad: 1, D: 400, E: countE, display: null, prevKind: null });
+    const st = presenceSteps(pl);
+    expect(st.maxInn).toBeLessThanOrEqual(0.25);
+    expect(st.maxSum).toBeLessThanOrEqual(1);
+    expect(st.growthFrames).toBeGreaterThanOrEqual(4);
+    // the first frame no longer shows three full columns at once
+    expect(Array.from(sample(pl, FRAME / 400).inn).slice(1).every((v) => v < 0.5)).toBe(true);
+    expect(Array.from(sample(pl, 1).inn)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('9.50 → 12,345.50 (2 decimals) and the way back grow and shrink over several frames', () => {
+    for (const [A0, A1] of [[950, 1234550], [1234550, 950]]) {
+      const pl = plan({ kind: 'count', A0, A1, Amax: Infinity, f: 2, pad: 1, D: 400, E: countE, display: null, prevKind: null });
+      const st = presenceSteps(pl);
+      expect(st.maxInn, `${A0}→${A1}`).toBeLessThanOrEqual(0.25);
+      expect(st.growthFrames, `${A0}→${A1}`).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it('random count plans with the default timing: every inn changes by ≤ 0.25 per frame', () => {
+    const rnd = mulberry32(0x1a77);
+    let worst = 0;
+    let worstAt = '';
+    for (let c = 0; c < 3000; c++) {
+      const f = rnd() < 0.3 ? Math.floor(rnd() * 3) : 0;
+      const pad = 1 + Math.floor(rnd() * 3);
+      const Amax = rnd() < 0.15 ? Math.floor(rnd() * 999) + 1 : Infinity;
+      const A0 = randVal(rnd);
+      const A1 = randVal(rnd);
+      if (A0 === A1) continue;
+      const pl = plan({ kind: 'count', A0, A1, Amax, f, pad, D: 400, E: countE, display: null, prevKind: null });
+      const { maxInn } = presenceSteps(pl);
+      if (maxInn > worst) {
+        worst = maxInn;
+        worstAt = `#${c} ${A0}→${A1} max=${Amax} f=${f} pad=${pad}`;
+      }
+    }
+    report('presence', worst, worstAt);
+    expect(worst, worstAt).toBeLessThanOrEqual(0.25);
+  });
+});
