@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { observeVisibility } from '../src/visibility';
-import { installIntersectionObserver, makeEntry, removeIntersectionObserver } from './helpers/io';
+import { installIntersectionObserver, makeEntry, MockIntersectionObserver, removeIntersectionObserver } from './helpers/io';
 import { makeHost } from './helpers';
 
 type Handle = ReturnType<typeof observeVisibility>;
@@ -140,6 +140,70 @@ describe('observeVisibility with IntersectionObserver', () => {
     expect(first).toHaveBeenCalledTimes(1);
     h2.stop();
     expect(io.observed(el)).toBe(false);
+  });
+
+  // An <option> has no layout box, so an observer never reports it visible.
+  it('observes an <option> through its <select>; options of one select share it', () => {
+    const io = installIntersectionObserver();
+    const select = makeHost('select');
+    const group = select.appendChild(document.createElement('optgroup'));
+    const a = select.appendChild(document.createElement('option'));
+    const b = group.appendChild(document.createElement('option'));
+    const ca = vi.fn();
+    const cb = vi.fn();
+    const ha = observe(a, ca);
+    const hb = observe(b, cb);
+    expect(io.observed(select)).toBe(true);
+    expect(io.observed(a) || io.observed(b)).toBe(false);
+    io.intersect(select, 1);
+    expect([ha.visible, hb.visible]).toEqual([true, true]);
+    expect(ca).toHaveBeenCalledExactlyOnceWith(true);
+    expect(cb).toHaveBeenCalledExactlyOnceWith(true);
+    ha.stop();
+    expect(io.observed(select)).toBe(true);
+    hb.stop();
+    expect(io.observed(select)).toBe(false);
+  });
+
+  it('an <option> outside a <select> (e.g. in a <datalist>) is visible at once', () => {
+    const io = installIntersectionObserver();
+    const list = makeHost('datalist');
+    const option = list.appendChild(document.createElement('option'));
+    const cb = vi.fn();
+    const h = observe(option, cb);
+    expect(cb).toHaveBeenCalledExactlyOnceWith(true);
+    expect(h.visible).toBe(true);
+    expect(io.observers).toHaveLength(0);
+  });
+
+  it('creates the shared observer in the root zone when zone.js is loaded (callbacks outside Angular)', () => {
+    const io = installIntersectionObserver();
+    let inRoot = false;
+    let createdInRoot: boolean | null = null;
+    const run = vi.fn(<T>(fn: () => T): T => {
+      inRoot = true;
+      try {
+        return fn();
+      } finally {
+        inRoot = false;
+      }
+    });
+    vi.stubGlobal('Zone', { root: { run } });
+    vi.stubGlobal('IntersectionObserver', class extends MockIntersectionObserver {
+      constructor(cb: IntersectionObserverCallback, o?: IntersectionObserverInit) {
+        super(cb, o);
+        createdInRoot = inRoot;
+      }
+    });
+    const el = makeHost();
+    const h = observe(el, () => {});
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(createdInRoot).toBe(true);
+    io.intersect(el, 1);
+    expect(h.visible).toBe(true);
+    // Shared: a second element reuses the observer, no second root-zone run.
+    observe(makeHost());
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('a callback may stop another watcher of the same element', () => {

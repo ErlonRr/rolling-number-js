@@ -53,7 +53,12 @@ function createShared(IO: typeof IntersectionObserver): Shared | null {
     });
   };
   try {
-    return { io: new IO(onEntries, { threshold: THRESHOLD }), targets };
+    // Under zone.js (Angular) the callback runs in the zone the observer is
+    // created in: create it in the root zone, so it never triggers change
+    // detection, whichever counter (or element inside the Angular zone) came first.
+    const make = (): IntersectionObserver => new IO(onEntries, { threshold: THRESHOLD });
+    const zone = (globalThis as { Zone?: { root?: { run<T>(fn: () => T): T } } }).Zone;
+    return { io: zone && zone.root ? zone.root.run(make) : make(), targets };
   } catch {
     return null;
   }
@@ -69,15 +74,20 @@ function alwaysVisible(cb: (visible: boolean) => void): { stop(): void; readonly
  * Observes `el`. `visible` is null until the first callback (null counts as
  * not visible). Without IntersectionObserver or a defaultView, `cb(true)` is
  * called synchronously and `visible` is true.
+ *
+ * An `<option>` has no layout box (an observer never reports it): its
+ * `<select>` is observed instead, and an option outside a select (a
+ * `<datalist>`, never rendered) counts as visible.
  */
 export function observeVisibility(
-  el: Element,
+  host: Element,
   cb: (visible: boolean) => void
 ): { stop(): void; readonly visible: boolean | null } {
-  const doc = el.ownerDocument;
+  const el = host.localName === 'option' ? host.closest('select') : host;
+  const doc = host.ownerDocument;
   const view = doc ? doc.defaultView : null;
   const IO = view ? (view as Window & typeof globalThis).IntersectionObserver : undefined;
-  if (!doc || typeof IO !== 'function') return alwaysVisible(cb);
+  if (!el || !doc || typeof IO !== 'function') return alwaysVisible(cb);
 
   let shared = observers.get(doc);
   if (!shared) {
