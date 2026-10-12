@@ -381,11 +381,8 @@ function newFormatter(o: NormalizedOptions): Formatter {
       return Object.freeze({ tokens: Object.freeze(merged) });
     },
     text,
-    numericText(A) {
-      const a = safeA(A);
-      const [int, frac] = splitDigits(Math.abs(a), f);
-      return (a < 0 ? '-' : '') + int.padStart(pad, '0') + (f ? '.' + frac : '');
-    },
+    // ASCII `-`, pad zeros, `.` and the fraction: the plain-path parts.
+    numericText: (A) => joinParts(plainParts(safeA(A), pad, '-')),
     labelText(value) {
       const a = quantize(value);
       return prefix + (nfLabel ? nfLabel.format(numStr(a) as unknown as number) : joinParts(plainParts(a, 1, '-'))) + suffix;
