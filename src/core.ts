@@ -120,7 +120,7 @@ export function normalizeOptions(o: RollingNumberOptions | undefined | null): {
  * @internal
  */
 export function getResolved(core: RollingNumberCore): Readonly<NormalizedOptions> & { readonly f: number } {
-  return Object.freeze({ ...core['opts'], value: core['value'], f: core['fmt'].f });
+  return core['engine'].resolved();
 }
 
 /** A promise waiting for a target to settle. */
@@ -129,6 +129,569 @@ interface Waiter {
   A: number;
   value: number;
   resolve: (settled: RollingNumberSettled) => void;
+}
+
+/**
+ * State and logic of one core. Written as a closure (its locals mangle;
+ * class members do not) and driven by the public {@link RollingNumberCore}
+ * methods, which document the behavior.
+ */
+interface Engine {
+  render(): void;
+  setValue(value: number, animate?: boolean | RollingNumberSetValueOptions): Promise<RollingNumberSettled>;
+  whenSettled(): Promise<RollingNumberSettled>;
+  finish(): void;
+  getValue(): number;
+  getDisplayValue(): number;
+  getText(): string;
+  getMode(): 'columns' | 'text';
+  isAnimating(): boolean;
+  /** update() logic, shared by the 1.x setters. */
+  apply(options: RollingNumberUpdate | null | undefined): void;
+  destroy(): void;
+  /** See {@link getResolved}. */
+  resolved(): Readonly<NormalizedOptions> & { readonly f: number };
+}
+
+/** Creates the engine of `self` (already validated and registered as the host's core). */
+function createEngine(self: RollingNumberCore, host: HTMLElement | SVGElement, options: RollingNumberUpdate): Engine {
+  const doc = host.ownerDocument;
+  const view = doc.defaultView as (Window & typeof globalThis) | null;
+
+  let opts: NormalizedOptions;
+  let fmt: Formatter;
+  /** `max` in last-digit units (Infinity: no limit). */
+  let Amax: number;
+  let renderer: Renderer | undefined;
+  /** Resolved mode. */
+  let res!: 'columns' | 'text' | 'unsupported'; // set by setup()
+
+  /** Normalized target value. */
+  let value: number;
+  /** Quantized target. */
+  let A1: number;
+  /** Quantized value the renderer last rested on (unclamped). */
+  let restA: number;
+  /** Clamped display scalar on screen. */
+  let shown: number;
+
+  /** The renderer is between `begin()` and `rest()` (mid-motion, possibly paused). */
+  let mid = false;
+  /** A motion is scheduled on the ticker. */
+  let moving = false;
+  /** `trigger: 'visible'`: a change waits for the host to become visible. */
+  let waiting = false;
+  let dead = false;
+
+  /** `animate` argument of the current change. */
+  let call: boolean | RollingNumberSetValueOptions | undefined;
+  /** Kind of the current motion. */
+  let kind: 'count' | 'roll' | undefined;
+  /** Plan of the current motion (unset until its first read phase, and for a read-phase instant change). */
+  let plan: Plan | undefined;
+  /** Plan replaced by a retarget and its progress, for the velocity carry (§5.6). */
+  let prev: { plan: Plan; p: number } | undefined;
+  /** The motion starts from the displayed channels (retarget, resume), not from rest. */
+  let fromDisplay = false;
+  /** Start scalar of the current motion. */
+  let A0 = 0;
+  /** First frame timestamp and last progress. */
+  let t0 = 0;
+  let p = 0;
+  let fs: FrameState | undefined;
+  /** The motion settled in this frame's write phase. */
+  let done = false;
+  /** Watchdog timer. */
+  let dog: number | undefined;
+
+  /** Promises waiting for the current target. */
+  let waiters: Waiter[] = [];
+  /** Display value when the current session started (unset: no session). */
+  let from: number | undefined;
+  /** `rn-start` of the current session was dispatched. */
+  let started = false;
+  /** Incremented by every change: stale microtasks compare it. */
+  let epoch = 0;
+
+  /** Current accessible label, and the last one written to `aria-label`. */
+  let label = '';
+  let lastLabel: string | undefined;
+  /** Host state captured before initialization, restored by destroy(). */
+  let prevRole: string | null = null;
+  let prevLabel: string | null = null;
+  let addedClass = false;
+
+  /** Last visibility reported for `trigger: 'visible'` (unset: unknown). */
+  let seen: boolean | undefined;
+  let vis: { stop(): void } | undefined;
+  let release: (() => void) | undefined;
+
+  /** Shared-ticker hooks (§5.9). */
+  const tick: Tickable = {
+    read: (now) => {
+      const r = renderer;
+      if (plan || !r) return;
+      t0 = now;
+      const t = resolveTiming(opts, call, probe, false, true);
+      // A CSS-derived duration of 0 (roll with `--rn-duration: 0s`): the write phase lands now (§5.8).
+      if (t.instant) return;
+      let { D, E } = t;
+      // Count → count retarget: velocity-continuous curve, unless this call sets its own easing (§5.6).
+      if (prev && prev.plan.kind === 'count' && t.kind === 'count' && !(typeof call === 'object' && call?.easing !== undefined)) {
+        ({ D, E } = retargetCurve(prev.plan, prev.p, shown, A1, D));
+      }
+      plan = makePlan({
+        kind: t.kind, A0, A1, Amax, f: fmt.f, pad: opts.pad, D, E,
+        display: fromDisplay ? r.displayed() : null,
+        prevKind: prev ? prev.plan.kind : null
+      });
+      arm(D);
+      r.measure();
+    },
+    write: (now) => {
+      const pl = plan;
+      mark(true);
+      const progress = pl ? Math.max(0, (now - t0) / pl.D) : 1;
+      if (!(progress < 1)) {
+        land();
+        return (done = true);
+      }
+      fs = sample(pl as Plan, (p = progress), fs);
+      (renderer as Renderer).frame(fs);
+      shown = fs.A;
+      return false;
+    },
+    settled: () => mark(false),
+    post: () => {
+      if (done) {
+        done = false;
+        end(!!plan);
+      } else if (!started) {
+        started = true;
+        emit('rn-start', detail(true));
+      }
+    }
+  };
+
+  /**
+   * Resolves the mode, warns once for hosts that cannot show columns, creates
+   * the renderer and (columns mode) sets the host markers, remembering their
+   * previous state so destroy() can restore it.
+   */
+  const setup = (): void => {
+    res = resolveMode(host, opts.mode);
+    if (res !== 'text' && resolveMode(host, 'auto') !== 'columns' && !warnedHosts.has(host)) {
+      warnedHosts.add(host);
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn(
+          `[RollingNumber] <${(host.localName || '').toLowerCase()}> is not a supported host in 1.x: the digit columns are ` +
+            'inserted as child nodes, which this element does not render. Use a container ' +
+            'element such as <span> or <div> instead.'
+        );
+      }
+    }
+    if (res === 'unsupported') return;
+    renderer = (res === 'text' ? createTextRenderer : createColumnsRenderer)(host, doc, fmt);
+    if (res === 'columns') {
+      // Role and label of a server-rendered host are core-owned: removed (not restored) on destroy.
+      const ssr = host.hasAttribute(SSR);
+      prevRole = ssr ? null : host.getAttribute('role');
+      prevLabel = ssr ? null : host.getAttribute('aria-label');
+      addedClass = !host.classList.contains(ROOT_CLASS);
+      host.removeAttribute(SSR);
+      mark(false);
+      host.setAttribute('role', 'img');
+    }
+  };
+
+  /** Destroys the renderer and restores the host markers (inverse of setup()). */
+  const teardown = (): void => {
+    renderer?.destroy();
+    renderer = undefined;
+    host.removeAttribute(STATE);
+    if (res === 'columns') {
+      host.classList.remove(ANIM_CLASS);
+      restoreAttr(host, 'role', prevRole);
+      restoreAttr(host, 'aria-label', prevLabel);
+      if (addedClass) host.classList.remove(ROOT_CLASS);
+      lastLabel = undefined;
+    }
+  };
+
+  /**
+   * Host markers: `data-rn-state="animating"` while moving; in columns mode
+   * also the root class (re-added when a framework clobbered `className`) and
+   * the legacy `rn-interpolating` class. Writes only what differs. `flush`
+   * reads a computed style before the markers go away, so user or pinned-1.2
+   * transitions never replay from the intermediate digits (the ticker flushes
+   * once per frame itself).
+   */
+  const mark = (on: boolean, flush?: boolean): void => {
+    const list = host.classList;
+    if (!renderer) return;
+    if (!on && flush && host.hasAttribute(STATE)) void view?.getComputedStyle(host).opacity;
+    if (res === 'columns') {
+      if (!list.contains(ROOT_CLASS)) list.add(ROOT_CLASS);
+      if (list.contains(ANIM_CLASS) !== on) list.toggle(ANIM_CLASS);
+    }
+    if (on && host.getAttribute(STATE) !== 'animating') host.setAttribute(STATE, 'animating');
+    else if (!on && host.hasAttribute(STATE)) host.removeAttribute(STATE);
+  };
+
+  /** Recomputes the label and writes `aria-label` when it changed (columns mode only). */
+  const writeLabel = (): void => {
+    label = resolveLabel(opts, fmt, value, Math.abs(A1) > Amax);
+    if (res === 'columns' && label !== lastLabel) host.setAttribute('aria-label', (lastLabel = label));
+  };
+
+  /** Rest state of the quantized value `A` (§3.3): the renderer gets the clamped scalar. */
+  const restOf = (A: number): RestState => {
+    const c = clampA(A, Amax);
+    const overflow = Math.abs(A) > Amax;
+    return {
+      A: c, overflow, layout: fmt.layout(fmt.shapeOf(A, Amax)), text: fmt.text(c, overflow), numericText: fmt.numericText(c), glyphs: fmt.glyphs
+    };
+  };
+
+  /** Whether the user asked the OS/browser to minimize non-essential motion. */
+  const reduced = (): boolean => {
+    try {
+      return !!view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Synchronous part of the timing (no CSS probe, §5.8). */
+  const timing = (animate: boolean | RollingNumberSetValueOptions | undefined) =>
+    resolveTiming(opts, animate, () => null, reduced(), !!view && typeof view.requestAnimationFrame === 'function');
+
+  /** CSS timing probe (read phase): the sizer's computed animation timing, or the host's raw custom properties in text mode. */
+  const probe = (): TimingProbe | null => {
+    const r = renderer;
+    if (!r || !view) return null;
+    const el = r.probe();
+    const cs = view.getComputedStyle(el || host);
+    return el
+      ? { durationCss: cs.animationDuration, easingCss: cs.animationTimingFunction, fromCustomProperties: false }
+      : { durationCss: cs.getPropertyValue('--rn-duration'), easingCss: cs.getPropertyValue('--rn-easing'), fromCustomProperties: true };
+  };
+
+  /** Watchdog: finishes a motion whose frames never come (background tab, `display:none` iframe). */
+  const arm = (D: number): void => {
+    disarm();
+    if (view) dog = view.setTimeout(() => self.finish(), D + 1000) as unknown as number;
+  };
+
+  const disarm = (): void => {
+    view?.clearTimeout(dog);
+    dog = undefined;
+  };
+
+  /** Stops the ticker and the watchdog. */
+  const halt = (): void => {
+    if (view) cancel(view, tick);
+    disarm();
+    moving = false;
+  };
+
+  /** Final DOM of the target. */
+  const land = (): void => {
+    renderer?.rest(restOf(A1));
+    restA = A1;
+    shown = clampA(A1, Amax);
+    mid = moving = false;
+    disarm();
+  };
+
+  /** Observes the host for `trigger: 'visible'`; a waiting change starts once it is visible. */
+  const observe = (): void => {
+    seen = undefined;
+    // The no-IO fallback calls back before returning: the handle is not used in the callback.
+    vis = observeVisibility(host, (visible) => {
+      seen = visible;
+      if (visible && waiting && !dead) go();
+    });
+  };
+
+  /** A promise for `v` (at the current target) that resolves with the next settle (or supersede/destroy). */
+  const wait = (v: number): Promise<RollingNumberSettled> =>
+    new Promise((resolve) => {
+      waiters.push({ A: A1, value: v, resolve });
+    });
+
+  /** Resolves and clears the waiting promises with `completed`. */
+  const settle = (list: Waiter[], completed: boolean): void => {
+    for (const w of list) w.resolve({ value: w.value, completed });
+  };
+
+  const getDisplayValue = (): number => shown / 10 ** fmt.f / fmt.scale || 0;
+
+  /** Event detail of the current session. */
+  const detail = (animated: boolean): RollingNumberEventDetail => ({ value, from: from ?? getDisplayValue(), animated });
+
+  /** Dispatches `rn-start` / `rn-end` on the host with the host realm's CustomEvent (bubbles, composed). */
+  const emit = (type: 'rn-start' | 'rn-end', d: RollingNumberEventDetail): void => {
+    const Ctor = view?.CustomEvent ?? (typeof CustomEvent === 'function' ? CustomEvent : null);
+    if (Ctor) host.dispatchEvent(new Ctor(type, { detail: d, bubbles: true, composed: true }));
+  };
+
+  /**
+   * Ends the session: `rn-start` if it never fired, `rn-end`, then the
+   * promises and the live announcement. State is committed before dispatch,
+   * so handlers may call setValue().
+   */
+  const end = (animated: boolean): void => {
+    const d = detail(animated);
+    const list = waiters;
+    const start = !started;
+    waiters = [];
+    from = undefined;
+    started = false;
+    if (start) emit('rn-start', d);
+    emit('rn-end', { ...d });
+    settle(list, true);
+    if (!dead && opts.live !== 'off') announce(host, label, opts.live);
+  };
+
+  /** Ends the session in a microtask (instant changes; never inside setValue()/update()). */
+  const later = (animated: boolean): void => {
+    const e = ++epoch;
+    microtask(() => {
+      if (!dead && e === epoch) end(animated);
+    });
+  };
+
+  /** Jumps to the target (see finish()); `defer` dispatches the events in a microtask. */
+  const jump = (defer?: boolean): void => {
+    if (dead || !(moving || waiting)) return;
+    const animated = started;
+    halt();
+    waiting = false;
+    land();
+    mark(false, true);
+    if (defer) later(animated);
+    else {
+      epoch++;
+      end(animated);
+    }
+  };
+
+  /**
+   * Starts the change to the current target (§8.2 steps 5–7): instant (final
+   * DOM now, events in a microtask) or animated (begin, markers, ticker,
+   * watchdog). A running motion is retargeted from the display.
+   */
+  const go = (): void => {
+    const r = renderer;
+    const t = timing(call);
+    waiting = false;
+    from ??= getDisplayValue();
+    if (!r || t.instant || !r.canAnimate()) {
+      halt();
+      land();
+      mark(false, true);
+      later(false);
+      return;
+    }
+    epoch++;
+    const display = mid ? r.displayed() : null;
+    prev = moving ? (plan ? { plan, p } : prev) : undefined;
+    fromDisplay = mid;
+    A0 = mid ? shown : restA;
+    r.begin(
+      fmt.motionLayout(display ? fmt.shapeOfDisplay(display) : fmt.shapeOf(restA, Amax), fmt.shapeOf(A1, Amax)),
+      t.kind,
+      restOf(A1)
+    );
+    kind = t.kind;
+    plan = undefined;
+    done = false;
+    mid = moving = true;
+    mark(true);
+    schedule(view as Window, tick);
+    arm(t.D);
+  };
+
+  const render = (): void => {
+    const r = renderer;
+    if (dead || !r) return;
+    mark(moving, true);
+    ensureStyles(host, opts.injectStyles);
+    if (!mid) r.rest(restOf(restA));
+  };
+
+  /** §8.2 steps 3–7 for the current target: supersede other promises, then wait for visibility or start. */
+  const change = (animate: boolean | RollingNumberSetValueOptions | undefined): Promise<RollingNumberSettled> => {
+    const target = A1;
+    const stale = waiters.filter((w) => w.A !== target);
+    waiters = waiters.filter((w) => w.A === target);
+    settle(stale, false);
+    const promise = wait(value);
+
+    ensureStyles(host, opts.injectStyles);
+    call = animate;
+    if (opts.trigger === 'visible' && seen !== true) {
+      // Waiting for visibility: the label is up to date, the display is frozen.
+      if (moving) {
+        halt();
+        mark(false, true);
+      }
+      waiting = true;
+    } else {
+      go();
+    }
+    return promise;
+  };
+
+  const setValue = (input: number, animate?: boolean | RollingNumberSetValueOptions): Promise<RollingNumberSettled> => {
+    const v = normalizeValue(input);
+    value = v;
+    if (dead) return Promise.resolve({ value: v, completed: false });
+
+    const A = fmt.quantize(v);
+    const same = A === A1;
+    A1 = A;
+    writeLabel();
+
+    if (moving || waiting) {
+      if (same) {
+        // Same target in flight (§8.2 step 2): join, finish or re-plan.
+        if (animate === undefined) return wait(v);
+        const t = timing(animate);
+        if (t.instant || !renderer?.canAnimate()) {
+          const promise = wait(v);
+          jump(true);
+          return promise;
+        }
+        const c = typeof animate === 'object' ? animate : null;
+        if (t.kind === kind && !(c && (c.duration !== undefined || c.easing !== undefined))) return wait(v);
+      }
+    } else if (same) {
+      return Promise.resolve({ value: v, completed: true });
+    }
+    return change(animate);
+  };
+
+  // ── initialization ──────────────────────────────────────────────────
+
+  const o = (opts = resolveOptions(options));
+  fmt = createFormatter(o);
+  Amax = fmt.maxA(o.max);
+  value = o.value;
+
+  // Server-rendered content: a host rendered by renderStaticHTML / getSSRProps, or a fallback child.
+  const adopted = host.hasAttribute(SSR) || !!host.querySelector(':scope>[' + SSR + ']');
+  setup();
+  ensureStyles(host, o.injectStyles);
+  if (o.live !== 'off') release = retainAnnouncer(host);
+  if (o.trigger === 'visible') observe();
+
+  A1 = fmt.quantize(value);
+  writeLabel();
+  // `from` intro (§8.3): skipped under reduced motion, and when visible server content was adopted.
+  const fromA = o.from === null ? A1 : fmt.quantize(o.from);
+  const intro =
+    fromA !== A1 &&
+    !reduced() &&
+    !(adopted && res === 'columns' && (o.trigger !== 'visible' || seen === true));
+  restA = intro ? fromA : A1;
+  shown = clampA(restA, Amax);
+  renderer?.mount(restOf(restA), true);
+  if (intro) void change(undefined);
+
+  return {
+    render,
+    setValue,
+    whenSettled() {
+      if (dead) return Promise.resolve({ value, completed: false });
+      if (moving || waiting || waiters.length > 0) return wait(value);
+      return Promise.resolve({ value, completed: true });
+    },
+    finish: () => jump(),
+    getValue: () => value,
+    getDisplayValue,
+    getText: () => restOf(A1).text,
+    getMode: () => (res === 'text' ? 'text' : 'columns'),
+    isAnimating: () => moving,
+    apply(input) {
+      if (dead) return;
+      const src = (input ?? {}) as Record<string, unknown>;
+      const before = opts;
+      const next = { ...before };
+      let raw: unknown;
+      let nextValue: unknown;
+      for (const key of OPTION_KEYS) {
+        try {
+          raw = src[key];
+        } catch {
+          raw = undefined;
+        }
+        // `from` is stored (getResolved) but creation-only: it never replays the intro.
+        if (key === 'value') nextValue = raw;
+        else (next as Record<string, unknown>)[key] = normalizeField(key, raw, before);
+      }
+
+      // Layout change (§8.3): the formatter output, the effective max or the resolved mode.
+      const nextFmt = createFormatter(next);
+      const nextRes = resolveMode(host, next.mode);
+      if (nextFmt.key !== fmt.key || nextFmt.maxA(next.max) !== Amax || nextRes !== res) {
+        jump(true);
+        opts = next;
+        fmt = nextFmt;
+        Amax = nextFmt.maxA(next.max);
+        A1 = restA = nextFmt.quantize(value);
+        shown = clampA(A1, Amax);
+        const rest = restOf(A1);
+        if (nextRes !== res) {
+          teardown();
+          setup();
+          renderer?.mount(rest, true);
+        } else {
+          renderer?.setFormatter(nextFmt);
+          renderer?.rest(rest);
+        }
+      }
+      opts = next;
+      writeLabel();
+
+      if (next.live === 'off') {
+        release?.();
+        release = undefined;
+      } else if (!release) {
+        release = retainAnnouncer(host);
+      }
+      if (next.trigger !== before.trigger) {
+        vis?.stop();
+        vis = seen = undefined;
+        if (next.trigger === 'visible') observe();
+        else if (waiting) go();
+      }
+
+      // Through the public methods, as update() documents.
+      if (nextValue !== undefined && normalizeValue(nextValue) !== value) {
+        void self.setValue(nextValue as number);
+      } else {
+        self.render();
+      }
+    },
+    destroy() {
+      if (dead) return;
+      dead = true;
+      epoch++;
+      halt();
+      waiting = mid = false;
+      vis?.stop();
+      release?.();
+      vis = release = undefined;
+      teardown();
+      if (instances.get(host) === self) instances.delete(host);
+      const list = waiters;
+      waiters = [];
+      settle(list, false);
+    },
+    resolved: () => Object.freeze({ ...opts, value, f: fmt.f })
+  };
 }
 
 /**
@@ -168,80 +731,10 @@ interface Waiter {
  * ```
  */
 export class RollingNumberCore {
-  // Fields are `declare`d and assigned in the constructor or later (unset = undefined):
-  // initializers would compile to one defineProperty helper call each.
+  // `declare`d and assigned in the constructor: initializers would compile to helper calls.
   private declare readonly host: HTMLElement | SVGElement;
-  private declare readonly doc: Document;
-  private declare readonly view: (Window & typeof globalThis) | null;
-  private declare opts: NormalizedOptions;
-  private declare fmt: Formatter;
-  /** `max` in last-digit units (Infinity: no limit). */
-  private declare Amax: number;
-  private declare renderer?: Renderer;
-  /** Resolved mode. */
-  private declare res: 'columns' | 'text' | 'unsupported';
-
-  /** Normalized target value. */
-  private declare value: number;
-  /** Quantized target. */
-  private declare A1: number;
-  /** Quantized value the renderer last rested on (unclamped). */
-  private declare restA: number;
-  /** Clamped display scalar on screen. */
-  private declare shown: number;
-
-  /** The renderer is between `begin()` and `rest()` (mid-motion, possibly paused). */
-  private declare mid?: boolean;
-  /** A motion is scheduled on the ticker. */
-  private declare moving?: boolean;
-  /** `trigger: 'visible'`: a change waits for the host to become visible. */
-  private declare waiting?: boolean;
-  private declare dead?: boolean;
-
-  /** `animate` argument of the current change. */
-  private declare call?: boolean | RollingNumberSetValueOptions;
-  /** Kind of the current motion. */
-  private declare kind?: 'count' | 'roll';
-  /** Plan of the current motion (unset until its first read phase, and for a read-phase instant change). */
-  private declare plan?: Plan;
-  /** Plan replaced by a retarget and its progress, for the velocity carry (§5.6). */
-  private declare prev?: { plan: Plan; p: number };
-  /** The motion starts from the displayed channels (retarget, resume), not from rest. */
-  private declare fromDisplay?: boolean;
-  /** Start scalar of the current motion. */
-  private declare A0: number;
-  /** First frame timestamp and last progress. */
-  private declare t0: number;
-  private declare p: number;
-  private declare fs?: FrameState;
-  /** The motion settled in this frame's write phase. */
-  private declare done?: boolean;
-  /** Watchdog timer. */
-  private declare dog?: number;
-
-  /** Promises waiting for the current target. */
-  private declare waiters: Waiter[];
-  /** Display value when the current session started (unset: no session). */
-  private declare from?: number;
-  /** `rn-start` of the current session was dispatched. */
-  private declare started?: boolean;
-  /** Incremented by every change: stale microtasks compare it. */
-  private declare epoch: number;
-
-  /** Current accessible label, and the last one written to `aria-label`. */
-  private declare label: string;
-  private declare lastLabel?: string;
-  /** Host state captured before initialization, restored by destroy(). */
-  private declare prevRole: string | null;
-  private declare prevLabel: string | null;
-  private declare addedClass: boolean;
-
-  /** Last visibility reported for `trigger: 'visible'` (unset: unknown). */
-  private declare seen?: boolean;
-  private declare vis?: { stop(): void };
-  private declare release?: () => void;
-  /** Shared-ticker hooks (§5.9). */
-  private declare readonly tick: Tickable;
+  /** State and logic (a closure, see createEngine). */
+  private declare readonly engine: Engine;
 
   /**
    * Attaches a rolling number to `container` and renders the initial value
@@ -272,329 +765,8 @@ export class RollingNumberCore {
     // A host can only be driven by one core: tear down the previous one first.
     instances.get(container)?.destroy();
     instances.set(container, this);
-    this.waiters = [];
-    this.epoch = 0;
-    this.tick = {
-      read: (now) => {
-        const r = this.renderer;
-        if (this.plan || !r) return;
-        this.t0 = now;
-        const t = resolveTiming(this.opts, this.call, () => this.probe(), false, true);
-        // A CSS-derived duration of 0 (roll with `--rn-duration: 0s`): the write phase lands now (§5.8).
-        if (t.instant) return;
-        let { D, E } = t;
-        const prev = this.prev;
-        const call = this.call;
-        // Count → count retarget: velocity-continuous curve, unless this call sets its own easing (§5.6).
-        if (prev && prev.plan.kind === 'count' && t.kind === 'count' && !(typeof call === 'object' && call?.easing !== undefined)) {
-          ({ D, E } = retargetCurve(prev.plan, prev.p, this.shown, this.A1, D));
-        }
-        this.plan = makePlan({
-          kind: t.kind, A0: this.A0, A1: this.A1, Amax: this.Amax, f: this.fmt.f, pad: this.opts.pad, D, E,
-          display: this.fromDisplay ? r.displayed() : null,
-          prevKind: prev ? prev.plan.kind : null
-        });
-        this.arm(D);
-        r.measure();
-      },
-      write: (now) => {
-        const plan = this.plan;
-        this.mark(true);
-        const p = plan ? Math.max(0, (now - this.t0) / plan.D) : 1;
-        if (!(p < 1)) {
-          this.land();
-          return (this.done = true);
-        }
-        const fs = (this.fs = sample(plan as Plan, (this.p = p), this.fs));
-        (this.renderer as Renderer).frame(fs);
-        this.shown = fs.A;
-        return false;
-      },
-      settled: () => this.mark(false),
-      post: () => {
-        if (this.done) {
-          this.done = false;
-          this.end(!!this.plan);
-        } else if (!this.started) {
-          this.started = true;
-          this.emit('rn-start', this.detail(true));
-        }
-      }
-    };
-
-    const o = (this.opts = resolveOptions(options));
     this.host = container;
-    this.doc = container.ownerDocument;
-    this.view = this.doc.defaultView as (Window & typeof globalThis) | null;
-    this.fmt = createFormatter(o);
-    this.Amax = this.fmt.maxA(o.max);
-    this.value = o.value;
-
-    // Server-rendered content: a host rendered by renderStaticHTML / getSSRProps, or a fallback child.
-    const adopted = container.hasAttribute(SSR) || !!container.querySelector(':scope>[' + SSR + ']');
-    this.setup();
-    ensureStyles(container, o.injectStyles);
-    if (o.live !== 'off') this.release = retainAnnouncer(container);
-    if (o.trigger === 'visible') this.observe();
-
-    const A1 = (this.A1 = this.fmt.quantize(this.value));
-    this.writeLabel();
-    // `from` intro (§8.3): skipped under reduced motion, and when visible server content was adopted.
-    const fromA = o.from === null ? A1 : this.fmt.quantize(o.from);
-    const intro =
-      fromA !== A1 &&
-      !this.reduced() &&
-      !(adopted && this.res === 'columns' && (o.trigger !== 'visible' || this.seen === true));
-    this.restA = intro ? fromA : A1;
-    this.shown = clampA(this.restA, this.Amax);
-    this.renderer?.mount(this.restOf(this.restA), true);
-    if (intro) void this.change(undefined);
-  }
-
-  /**
-   * Resolves the mode, warns once for hosts that cannot show columns, creates
-   * the renderer and (columns mode) sets the host markers, remembering their
-   * previous state so destroy() can restore it.
-   */
-  private setup(): void {
-    const h = this.host;
-    const res = (this.res = resolveMode(h, this.opts.mode));
-    if (res !== 'text' && resolveMode(h, 'auto') !== 'columns' && !warnedHosts.has(h)) {
-      warnedHosts.add(h);
-      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn(
-          `[RollingNumber] <${(h.localName || '').toLowerCase()}> is not a supported host in 1.x: the digit columns are ` +
-            'inserted as child nodes, which this element does not render. Use a container ' +
-            'element such as <span> or <div> instead.'
-        );
-      }
-    }
-    if (res === 'unsupported') return;
-    this.renderer = (res === 'text' ? createTextRenderer : createColumnsRenderer)(h, this.doc, this.fmt);
-    if (res === 'columns') {
-      // Role and label of a server-rendered host are core-owned: removed (not restored) on destroy.
-      const ssr = h.hasAttribute(SSR);
-      this.prevRole = ssr ? null : h.getAttribute('role');
-      this.prevLabel = ssr ? null : h.getAttribute('aria-label');
-      this.addedClass = !h.classList.contains(ROOT_CLASS);
-      h.removeAttribute(SSR);
-      this.mark(false);
-      h.setAttribute('role', 'img');
-    }
-  }
-
-  /** Destroys the renderer and restores the host markers (inverse of setup()). */
-  private teardown(): void {
-    const h = this.host;
-    this.renderer?.destroy();
-    this.renderer = undefined;
-    h.removeAttribute(STATE);
-    if (this.res === 'columns') {
-      h.classList.remove(ANIM_CLASS);
-      restoreAttr(h, 'role', this.prevRole);
-      restoreAttr(h, 'aria-label', this.prevLabel);
-      if (this.addedClass) h.classList.remove(ROOT_CLASS);
-      this.lastLabel = undefined;
-    }
-  }
-
-  /**
-   * Host markers: `data-rn-state="animating"` while moving; in columns mode
-   * also the root class (re-added when a framework clobbered `className`) and
-   * the legacy `rn-interpolating` class. Writes only what differs. `flush`
-   * reads a computed style before the markers go away, so user or pinned-1.2
-   * transitions never replay from the intermediate digits (the ticker flushes
-   * once per frame itself).
-   */
-  private mark(on: boolean, flush?: boolean): void {
-    const h = this.host;
-    const list = h.classList;
-    if (!this.renderer) return;
-    if (!on && flush && h.hasAttribute(STATE)) void this.view?.getComputedStyle(h).opacity;
-    if (this.res === 'columns') {
-      if (!list.contains(ROOT_CLASS)) list.add(ROOT_CLASS);
-      if (list.contains(ANIM_CLASS) !== on) list.toggle(ANIM_CLASS);
-    }
-    if (on && h.getAttribute(STATE) !== 'animating') h.setAttribute(STATE, 'animating');
-    else if (!on && h.hasAttribute(STATE)) h.removeAttribute(STATE);
-  }
-
-  /** Recomputes the label and writes `aria-label` when it changed (columns mode only). */
-  private writeLabel(): void {
-    const label = (this.label = resolveLabel(this.opts, this.fmt, this.value, Math.abs(this.A1) > this.Amax));
-    if (this.res === 'columns' && label !== this.lastLabel) this.host.setAttribute('aria-label', (this.lastLabel = label));
-  }
-
-  /** Rest state of the quantized value `A` (§3.3): the renderer gets the clamped scalar. */
-  private restOf(A: number): RestState {
-    const f = this.fmt;
-    const Amax = this.Amax;
-    const c = clampA(A, Amax);
-    const overflow = Math.abs(A) > Amax;
-    return {
-      A: c, overflow, layout: f.layout(f.shapeOf(A, Amax)), text: f.text(c, overflow), numericText: f.numericText(c), glyphs: f.glyphs
-    };
-  }
-
-  /** Whether the user asked the OS/browser to minimize non-essential motion. */
-  private reduced(): boolean {
-    try {
-      return !!this.view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    } catch {
-      return false;
-    }
-  }
-
-  /** Synchronous part of the timing (no CSS probe, §5.8). */
-  private timing(animate: boolean | RollingNumberSetValueOptions | undefined) {
-    const view = this.view;
-    return resolveTiming(this.opts, animate, () => null, this.reduced(), !!view && typeof view.requestAnimationFrame === 'function');
-  }
-
-  /** CSS timing probe (read phase): the sizer's computed animation timing, or the host's raw custom properties in text mode. */
-  private probe(): TimingProbe | null {
-    const r = this.renderer;
-    const view = this.view;
-    if (!r || !view) return null;
-    const el = r.probe();
-    const cs = view.getComputedStyle(el || this.host);
-    return el
-      ? { durationCss: cs.animationDuration, easingCss: cs.animationTimingFunction, fromCustomProperties: false }
-      : { durationCss: cs.getPropertyValue('--rn-duration'), easingCss: cs.getPropertyValue('--rn-easing'), fromCustomProperties: true };
-  }
-
-  /** Watchdog: finishes a motion whose frames never come (background tab, `display:none` iframe). */
-  private arm(D: number): void {
-    this.disarm();
-    if (this.view) this.dog = this.view.setTimeout(() => this.finish(), D + 1000) as unknown as number;
-  }
-
-  private disarm(): void {
-    this.view?.clearTimeout(this.dog);
-    this.dog = undefined;
-  }
-
-  /** Stops the ticker and the watchdog. */
-  private halt(): void {
-    if (this.view) cancel(this.view, this.tick);
-    this.disarm();
-    this.moving = false;
-  }
-
-  /** Final DOM of the target. */
-  private land(): void {
-    this.renderer?.rest(this.restOf(this.A1));
-    this.restA = this.A1;
-    this.shown = clampA(this.A1, this.Amax);
-    this.mid = this.moving = false;
-    this.disarm();
-  }
-
-  /** Observes the host for `trigger: 'visible'`; a waiting change starts once it is visible. */
-  private observe(): void {
-    this.seen = undefined;
-    // The no-IO fallback calls back before returning: the handle is not used in the callback.
-    this.vis = observeVisibility(this.host, (visible) => {
-      this.seen = visible;
-      if (visible && this.waiting && !this.dead) this.go();
-    });
-  }
-
-  /** A promise for `value` (at the current target) that resolves with the next settle (or supersede/destroy). */
-  private wait(value: number): Promise<RollingNumberSettled> {
-    return new Promise((resolve) => {
-      this.waiters.push({ A: this.A1, value, resolve });
-    });
-  }
-
-  /** Event detail of the current session. */
-  private detail(animated: boolean): RollingNumberEventDetail {
-    return { value: this.value, from: this.from ?? this.getDisplayValue(), animated };
-  }
-
-  /** Dispatches `rn-start` / `rn-end` on the host with the host realm's CustomEvent (bubbles, composed). */
-  private emit(type: 'rn-start' | 'rn-end', detail: RollingNumberEventDetail): void {
-    const Ctor = this.view?.CustomEvent ?? (typeof CustomEvent === 'function' ? CustomEvent : null);
-    if (Ctor) this.host.dispatchEvent(new Ctor(type, { detail, bubbles: true, composed: true }));
-  }
-
-  /**
-   * Ends the session: `rn-start` if it never fired, `rn-end`, then the
-   * promises and the live announcement. State is committed before dispatch,
-   * so handlers may call setValue().
-   */
-  private end(animated: boolean): void {
-    const detail = this.detail(animated);
-    const waiters = this.waiters;
-    const start = !this.started;
-    this.waiters = [];
-    this.from = undefined;
-    this.started = false;
-    if (start) this.emit('rn-start', detail);
-    this.emit('rn-end', { ...detail });
-    for (const w of waiters) w.resolve({ value: w.value, completed: true });
-    if (!this.dead && this.opts.live !== 'off') announce(this.host, this.label, this.opts.live);
-  }
-
-  /** Ends the session in a microtask (instant changes; never inside setValue()/update()). */
-  private later(animated: boolean): void {
-    const epoch = ++this.epoch;
-    microtask(() => {
-      if (!this.dead && epoch === this.epoch) this.end(animated);
-    });
-  }
-
-  /** Jumps to the target (see finish()); `defer` dispatches the events in a microtask. */
-  private jump(defer?: boolean): void {
-    if (this.dead || !(this.moving || this.waiting)) return;
-    const animated = !!this.started;
-    this.halt();
-    this.waiting = false;
-    this.land();
-    this.mark(false, true);
-    if (defer) this.later(animated);
-    else {
-      this.epoch++;
-      this.end(animated);
-    }
-  }
-
-  /**
-   * Starts the change to the current target (§8.2 steps 5–7): instant (final
-   * DOM now, events in a microtask) or animated (begin, markers, ticker,
-   * watchdog). A running motion is retargeted from the display.
-   */
-  private go(): void {
-    const r = this.renderer;
-    const t = this.timing(this.call);
-    this.waiting = false;
-    this.from ??= this.getDisplayValue();
-    if (!r || t.instant || !r.canAnimate()) {
-      this.halt();
-      this.land();
-      this.mark(false, true);
-      this.later(false);
-      return;
-    }
-    this.epoch++;
-    const f = this.fmt;
-    const Amax = this.Amax;
-    const display = this.mid ? r.displayed() : null;
-    this.prev = this.moving ? (this.plan ? { plan: this.plan, p: this.p } : this.prev) : undefined;
-    this.fromDisplay = this.mid;
-    this.A0 = this.mid ? this.shown : this.restA;
-    r.begin(
-      f.motionLayout(display ? f.shapeOfDisplay(display) : f.shapeOf(this.restA, Amax), f.shapeOf(this.A1, Amax)),
-      t.kind,
-      this.restOf(this.A1)
-    );
-    this.kind = t.kind;
-    this.plan = undefined;
-    this.done = false;
-    this.mid = this.moving = true;
-    this.mark(true);
-    schedule(this.view as Window, this.tick);
-    this.arm(t.D);
+    this.engine = createEngine(this, container, options);
   }
 
   /**
@@ -607,11 +779,7 @@ export class RollingNumberCore {
    * {@link RollingNumberCore.destroy}.
    */
   public render(): void {
-    const r = this.renderer;
-    if (this.dead || !r) return;
-    this.mark(!!this.moving, true);
-    ensureStyles(this.host, this.opts.injectStyles);
-    if (!this.mid) r.rest(this.restOf(this.restA));
+    this.engine.render();
   }
 
   /**
@@ -642,55 +810,7 @@ export class RollingNumberCore {
    * ```
    */
   public setValue(value: number, animate?: boolean | RollingNumberSetValueOptions): Promise<RollingNumberSettled> {
-    const v = normalizeValue(value);
-    this.value = v;
-    if (this.dead) return Promise.resolve({ value: v, completed: false });
-
-    const A1 = this.fmt.quantize(v);
-    const same = A1 === this.A1;
-    this.A1 = A1;
-    this.writeLabel();
-
-    if (this.moving || this.waiting) {
-      if (same) {
-        // Same target in flight (§8.2 step 2): join, finish or re-plan.
-        if (animate === undefined) return this.wait(v);
-        const t = this.timing(animate);
-        if (t.instant || !this.renderer?.canAnimate()) {
-          const p = this.wait(v);
-          this.jump(true);
-          return p;
-        }
-        const call = typeof animate === 'object' ? animate : null;
-        if (t.kind === this.kind && !(call && (call.duration !== undefined || call.easing !== undefined))) return this.wait(v);
-      }
-    } else if (same) {
-      return Promise.resolve({ value: v, completed: true });
-    }
-    return this.change(animate);
-  }
-
-  /** §8.2 steps 3–7 for the current target: supersede other promises, then wait for visibility or start. */
-  private change(animate: boolean | RollingNumberSetValueOptions | undefined): Promise<RollingNumberSettled> {
-    const A1 = this.A1;
-    const stale = this.waiters.filter((w) => w.A !== A1);
-    this.waiters = this.waiters.filter((w) => w.A === A1);
-    for (const w of stale) w.resolve({ value: w.value, completed: false });
-    const promise = this.wait(this.value);
-
-    ensureStyles(this.host, this.opts.injectStyles);
-    this.call = animate;
-    if (this.opts.trigger === 'visible' && this.seen !== true) {
-      // Waiting for visibility: the label is up to date, the display is frozen.
-      if (this.moving) {
-        this.halt();
-        this.mark(false, true);
-      }
-      this.waiting = true;
-    } else {
-      this.go();
-    }
-    return promise;
+    return this.engine.setValue(value, animate);
   }
 
   /**
@@ -699,9 +819,7 @@ export class RollingNumberCore {
    * @returns `{ value, completed }` as for {@link RollingNumberCore.setValue}.
    */
   public whenSettled(): Promise<RollingNumberSettled> {
-    if (this.dead) return Promise.resolve({ value: this.value, completed: false });
-    if (this.moving || this.waiting || this.waiters.length > 0) return this.wait(this.value);
-    return Promise.resolve({ value: this.value, completed: true });
+    return this.engine.whenSettled();
   }
 
   /**
@@ -710,7 +828,7 @@ export class RollingNumberCore {
    * `{ completed: true }`. No-op when idle.
    */
   public finish(): void {
-    this.jump();
+    this.engine.finish();
   }
 
   /**
@@ -721,7 +839,7 @@ export class RollingNumberCore {
    * @returns The target value.
    */
   public getValue(): number {
-    return this.value;
+    return this.engine.getValue();
   }
 
   /**
@@ -731,8 +849,7 @@ export class RollingNumberCore {
    * @returns The displayed value.
    */
   public getDisplayValue(): number {
-    const f = this.fmt;
-    return this.shown / 10 ** f.f / f.scale || 0;
+    return this.engine.getDisplayValue();
   }
 
   /**
@@ -743,7 +860,7 @@ export class RollingNumberCore {
    * @returns The text of the target.
    */
   public getText(): string {
-    return this.restOf(this.A1).text;
+    return this.engine.getText();
   }
 
   /**
@@ -753,7 +870,7 @@ export class RollingNumberCore {
    * @returns `'columns'` or `'text'`.
    */
   public getMode(): 'columns' | 'text' {
-    return this.res === 'text' ? 'text' : 'columns';
+    return this.engine.getMode();
   }
 
   /**
@@ -782,7 +899,7 @@ export class RollingNumberCore {
    * @returns `true` from an animated `setValue()` until the motion settles.
    */
   public isAnimating(): boolean {
-    return !!this.moving;
+    return this.engine.isAnimating();
   }
 
   /**
@@ -794,7 +911,7 @@ export class RollingNumberCore {
    * @param interpolate See {@link RollingNumberOptions.interpolate}.
    */
   public setInterpolate(interpolate: boolean): void {
-    this.apply({ interpolate: interpolate ?? null });
+    this.engine.apply({ interpolate: interpolate ?? null });
   }
 
   /**
@@ -805,7 +922,7 @@ export class RollingNumberCore {
    * @param duration Duration in ms (`0` disables counting), or `null` for auto.
    */
   public setDuration(duration: number | null): void {
-    this.apply({ duration });
+    this.engine.apply({ duration });
   }
 
   /**
@@ -815,7 +932,7 @@ export class RollingNumberCore {
    * @param pad See {@link RollingNumberOptions.pad}.
    */
   public setPad(pad: number): void {
-    this.apply({ pad: pad ?? null });
+    this.engine.apply({ pad: pad ?? null });
   }
 
   /**
@@ -825,7 +942,7 @@ export class RollingNumberCore {
    * @param max Display clamp, or `null` for none (see {@link RollingNumberOptions.max}).
    */
   public setMax(max: number | null): void {
-    this.apply({ max: max ?? null });
+    this.engine.apply({ max: max ?? null });
   }
 
   /**
@@ -847,69 +964,7 @@ export class RollingNumberCore {
    * ```
    */
   public update(options: RollingNumberUpdate): void {
-    this.apply(options);
-  }
-
-  /** update() logic, shared by the 1.x setters. */
-  private apply(options: RollingNumberUpdate | null | undefined): void {
-    if (this.dead) return;
-    const o = (options ?? {}) as Record<string, unknown>;
-    const prev = this.opts;
-    const next = { ...prev };
-    let value: unknown;
-    for (const key of OPTION_KEYS) {
-      let raw: unknown;
-      try {
-        raw = o[key];
-      } catch {
-        raw = undefined;
-      }
-      // `from` is stored (getResolved) but creation-only: it never replays the intro.
-      if (key === 'value') value = raw;
-      else (next as Record<string, unknown>)[key] = normalizeField(key, raw, prev);
-    }
-
-    // Layout change (§8.3): the formatter output, the effective max or the resolved mode.
-    const fmt = createFormatter(next);
-    const res = resolveMode(this.host, next.mode);
-    if (fmt.key !== this.fmt.key || fmt.maxA(next.max) !== this.Amax || res !== this.res) {
-      this.jump(true);
-      this.opts = next;
-      this.fmt = fmt;
-      this.Amax = fmt.maxA(next.max);
-      this.A1 = this.restA = fmt.quantize(this.value);
-      this.shown = clampA(this.A1, this.Amax);
-      const rest = this.restOf(this.A1);
-      if (res !== this.res) {
-        this.teardown();
-        this.setup();
-        this.renderer?.mount(rest, true);
-      } else {
-        this.renderer?.setFormatter(fmt);
-        this.renderer?.rest(rest);
-      }
-    }
-    this.opts = next;
-    this.writeLabel();
-
-    if (next.live === 'off') {
-      this.release?.();
-      this.release = undefined;
-    } else if (!this.release) {
-      this.release = retainAnnouncer(this.host);
-    }
-    if (next.trigger !== prev.trigger) {
-      this.vis?.stop();
-      this.vis = this.seen = undefined;
-      if (next.trigger === 'visible') this.observe();
-      else if (this.waiting) this.go();
-    }
-
-    if (value !== undefined && normalizeValue(value) !== this.value) {
-      void this.setValue(value as number);
-    } else {
-      this.render();
-    }
+    this.engine.apply(options);
   }
 
   /**
@@ -920,18 +975,6 @@ export class RollingNumberCore {
    * instance is inert afterwards. Calling it more than once is safe.
    */
   public destroy(): void {
-    if (this.dead) return;
-    this.dead = true;
-    this.epoch++;
-    this.halt();
-    this.waiting = this.mid = false;
-    this.vis?.stop();
-    this.release?.();
-    this.vis = this.release = undefined;
-    this.teardown();
-    if (instances.get(this.host) === this) instances.delete(this.host);
-    const waiters = this.waiters;
-    this.waiters = [];
-    for (const w of waiters) w.resolve({ value: w.value, completed: false });
+    this.engine.destroy();
   }
 }
