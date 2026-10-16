@@ -45,7 +45,7 @@ tests/                    vitest + happy-dom unit tests, *.test-d.ts type tests,
 tests/visual/             Playwright specs on the built dist/ (see "Visual suite")
 scripts/                  build-types, smoke (+ smoke-manifest), size gate, ng-aot-check, vscode-custom-data
 docs/design/v1.3.md       the 1.3 spec; docs/AUDIT.md the audit of 1.2.1 (finding ids B.., I.., C..)
-index.html                demo page (vite.config.demo.ts)
+index.html, demo/         demo site: shell + hash-routed pages in demo/pages (vite.config.demo.ts)
 ```
 
 ## Data flow
@@ -78,7 +78,7 @@ Use **pnpm**.
 | Command | What it does |
 | :--- | :--- |
 | `pnpm install` | Install dev dependencies |
-| `pnpm dev` | Vite dev server for the demo (`index.html`) |
+| `pnpm dev` | Vite dev server for the demo site (`index.html` + `demo/`) |
 | `pnpm build` | `tsc` check, `ngc` partial compilation of the Angular entry, Vite library build (ESM + CJS), the IIFE build, declarations, Custom Elements Manifest and VS Code data |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | `vitest run` (happy-dom unit tests, engine property tests, type tests) |

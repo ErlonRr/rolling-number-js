@@ -1,9 +1,9 @@
 import { defineConfig, type Alias, type Plugin } from 'vite';
-import { createReadStream, existsSync, statSync } from 'fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'fs';
 import { basename, extname, resolve, sep } from 'path';
 
 /**
- * Demo page (index.html) and the server of the visual suite.
+ * Demo site (index.html + demo/) and the server of the visual suite.
  *
  * - serve (`vite --config vite.config.demo.ts`): `rolling-number` resolves to
  *   the TypeScript sources, so edits reload live.
@@ -95,8 +95,10 @@ export default defineConfig(({ command, isPreview }) => {
   }
   return {
     resolve: { alias: aliases(command === 'serve' && !isPreview) },
-    // Vue feature flags (no Vue plugin here: the demo uses render functions).
     define: {
+      // The version badge reads package.json, so it never drifts.
+      'import.meta.env.RN_VERSION': JSON.stringify(JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version),
+      // Vue feature flags (no Vue plugin here: the demo uses render functions).
       __VUE_OPTIONS_API__: 'true',
       __VUE_PROD_DEVTOOLS__: 'false',
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
