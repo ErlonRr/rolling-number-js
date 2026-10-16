@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Ids such as `B15` or `I05` refer to the findings in [`docs/AUDIT.md`](./docs/AUDIT.md).
 
+## [1.3.1] — 2026-10-17
+
+Documentation release: the package code is the same as 1.3.0.
+
+### Changed
+
+- README: new screenshots and animation from the redesigned demo, and a link to the live demo at [rolling-number-js.erlonrru.com](https://rolling-number-js.erlonrru.com).
+- Demo site (not part of the package): responsive redesign shared with sparkline-mini-charts — a bottom tab bar on phones, a playground whose preview stays in view while the options scroll, code for every framework plus the CSS, the setup kept in the URL, examples, framework guides and an API reference that turns into cards on phones.
+
 ## [1.3.0] — 2026-10-12
 
 Minor release. Every 1.x option, default, export path, the `<rolling-number>` tag, the documented CSS classes and the CSS variables are kept. The visual changes listed under **Changed** fix audit bugs; the behavior changes S1–S6 are those of [`docs/design/v1.3.md`](./docs/design/v1.3.md) §0.
@@ -181,7 +190,9 @@ Patch release: bug fixes only. Every public API, option name, default, export pa
 - Initial release: `RollingNumberCore` engine, `<rolling-number>` Web Component, `style.css` and the demo page.
 - pnpm setup, MIT license and README.
 
-[Unreleased]: https://github.com/ErlonRr/rolling-number-js/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/ErlonRr/rolling-number-js/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/ErlonRr/rolling-number-js/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/ErlonRr/rolling-number-js/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/ErlonRr/rolling-number-js/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/ErlonRr/rolling-number-js/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/ErlonRr/rolling-number-js/compare/v1.1.0...v1.1.1
