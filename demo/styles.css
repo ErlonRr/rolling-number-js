@@ -1488,6 +1488,7 @@ main {
 
 .mini-table th,
 .mini-table td {
+  vertical-align: baseline;
   padding: 6px 4px;
   border-bottom: 1px solid var(--border);
   text-align: left;
@@ -1500,6 +1501,8 @@ main {
 }
 
 .mini-table td {
+  /* The library styles its host as inline-flex: keep a counter in a <td> a real table cell. */
+  display: table-cell;
   text-align: right;
   font-weight: 650;
 }

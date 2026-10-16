@@ -2,20 +2,23 @@
 
 > An animated, odometer-style number counter. Zero dependencies, one API for the **Web Component**, **vanilla JS**, **React / Next.js**, **Vue / Nuxt**, **Angular** and **Svelte** — and it works inside any element: text, buttons, table cells, inputs, textareas and SVG.
 
-![rolling-number banner](https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/rolling-number-js.png)
-
 <div align="center">
 
 [![npm version](https://img.shields.io/npm/v/rolling-number?color=6366f1&style=flat-square)](https://www.npmjs.com/package/rolling-number)
-[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square)](LICENSE)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square)](https://github.com/ErlonRr/rolling-number-js/blob/main/LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square)](https://github.com/ErlonRr/rolling-number-js/blob/main/package.json)
 [![Frameworks](https://img.shields.io/badge/Frameworks-Web%20Component%20%7C%20React%20%7C%20Vue%20%7C%20Angular%20%7C%20Svelte-blue?style=flat-square)](#-use-it-in-your-framework)
+[![Live demo](https://img.shields.io/badge/demo-live-4f46e5?style=flat-square)](https://rolling-number-js.erlonrru.com)
 
 </div>
 
-![rolling-number demo animation](https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/rolling-number-js.gif)
+<a href="https://rolling-number-js.erlonrru.com"><img src="https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/rolling-number-js.png" width="100%" alt="The Rolling Number demo home page: the headline “Numbers that roll into place”, the install command and a live revenue dashboard" /></a>
 
-**Try every option in the demo:** clone the repo and run `pnpm install && pnpm dev`. The playground generates the code for your framework from the settings you pick.
+**[Live demo and playground](https://rolling-number-js.erlonrru.com)** · [Examples](https://rolling-number-js.erlonrru.com/#/examples) · [Framework guides](https://rolling-number-js.erlonrru.com/#/frameworks) · [API](https://rolling-number-js.erlonrru.com/#/api) · [Changelog](https://github.com/ErlonRr/rolling-number-js/blob/main/CHANGELOG.md)
+
+<p align="center"><img src="https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/rolling-number-js.gif" width="800" alt="A revenue dashboard: the dollar total counts up with spinning reels after a big sale and down after a refund, while the visitors, orders and conversion tiles tick" /></p>
+
+The [playground](https://rolling-number-js.erlonrru.com/#/playground) has every option and writes the code for your framework from the settings you pick. To run the demo locally: `pnpm install && pnpm dev`.
 
 ---
 
@@ -143,6 +146,8 @@ All counters on a page share one `requestAnimationFrame` loop, which reads and w
 
 Every option is optional and works the same way in every integration. Invalid input never throws: it falls back to the default.
 
+<a href="https://rolling-number-js.erlonrru.com/#/playground"><img src="https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/playground.png" width="100%" alt="The playground: a counter showing 48.210,50 € with a gradient, the generated React code, and the options grouped by motion, digits, format, accessibility and style" /></a>
+
 | Option | Attribute | Default | What it does |
 | :--- | :--- | :--- | :--- |
 | `value` | `value` | `0` | The number to show. Rounded to the displayed precision. |
@@ -233,6 +238,8 @@ While a counter animates, its host carries `data-rn-state="animating"`, which yo
 ---
 
 ## 🧩 Works in any element
+
+<a href="https://rolling-number-js.erlonrru.com/#/examples"><img src="https://raw.githubusercontent.com/ErlonRr/rolling-number-js/main/assets/elements.png" width="100%" alt="Four cards: a notification badge on a button, currency and percent in table cells, a distance in a read-only input and a temperature in SVG text, each with its options" /></a>
 
 | Host | What happens |
 | :--- | :--- |

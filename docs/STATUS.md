@@ -26,27 +26,16 @@ Ultimo aggiornamento: 2026-10-12. Questo file riassume il lavoro fatto e quello 
 - Revisione avversariale in 4 aree: circa 50 problemi confermati, tutti corretti (29 commit) con test di regressione; un caso di nicchia (tipi ESM e CJS caricati insieme) documentato come limitazione.
 - Verifiche: 999 test unitari, test visivi Playwright su Chromium e Firefox (WebKit solo in CI), smoke, Angular AOT, tipi Vue, lint del pacchetto, controllo delle dimensioni.
 - Dimensioni approvate dal proprietario: entry principale circa 23 KB gzip con tutte le funzioni (limiti = misurato + 5%); moduli opzionali rinviati a 1.4/2.0.
-- Demo rifatta con la stessa struttura di sparkline-mini-charts (tema chiaro di default, sidebar, playground con codice generato per framework); README riscritto per la 1.3; CHANGELOG `[Unreleased] — 1.3.0`.
+- README riscritto per la 1.3. Rilasciata su npm la **1.3.0** il 2026-10-12 (merge in `main`, tag `v1.3.0`).
+
+### 5. Demo responsive e 1.3.1 (2026-10-17)
+- Demo rifatta come quella attuale di sparkline-mini-charts (`index.html` + `demo/`): tab bar in basso su telefono, header sticky su tablet/desktop, tema di sistema con toggle, pagine Home / Playground / Examples / Frameworks / API caricate a richiesta, playground con anteprima sticky, codice per ogni framework + CSS e stato nell'URL. Online su https://rolling-number-js.erlonrru.com (Vercel, da `main`).
+- README con nuove immagini e GIF catturate dalla demo (`assets/`) e link alla demo online; **1.3.1** = solo documentazione, codice del pacchetto identico alla 1.3.0.
 
 ## Da fare
 
-### Subito (proprietario)
-1. Aprire e unire la PR `fix/v1.2.x-audit` → `main`:
-   https://github.com/ErlonRr/rolling-number-js/compare/main...fix/v1.2.x-audit?expand=1
-2. Rilasciare la 1.2.2: bump di `package.json` (oggi 1.2.1), data nel CHANGELOG, `pnpm publish` (esegue `prepublishOnly`).
-3. Decidere le voci S1–S6 del §0 di `docs/design/v1.3.md`. Senza risposta si procede con il default "ship":
-   - **S1**: `setValue()` restituisce una Promise invece di `void`;
-   - **S2**: `update({ duration: null })` riporta la durata al default automatico;
-   - **S3**: anche le rotazioni con `interpolate:false` sono guidate da JS, quindi il DOM è definitivo solo a `rn-end`;
-   - **S4**: `--rn-duration`/`--rn-easing` personalizzati regolano anche il conteggio;
-   - **S5**: una `duration` esplicita regola anche le rotazioni;
-   - **S6**: a metà conteggio i `data-digit` delle colonne non formano più il numero intermedio.
-
-### v1.3 — rilascio
-1. Aprire e unire la PR `feat/v1.3` → `main` (dopo la 1.2.x, oppure direttamente: contiene anche i commit della 1.2.x):
-   https://github.com/ErlonRr/rolling-number-js/compare/main...feat/v1.3?expand=1
-2. Bump a 1.3.0 in `package.json`, data nel CHANGELOG, `pnpm publish` (esegue tutti i controlli).
-3. Verificare la CI su GitHub (non è mai stata eseguita) e i test visivi WebKit.
+1. Verificare la CI su GitHub (non è mai stata eseguita) e i test visivi WebKit.
+2. Possibile 1.3.2: con un `<td>`/`<th>` come host lo stile `.rn-rolling-number { display: inline-flex }` toglie alla cella il `display: table-cell` (la demo lo rimette nel proprio CSS). Valutare `display: table-cell` per le celle nel CSS della libreria, con un test visivo.
 
 ### v2.0 — breaking (dopo la v1.3)
 Sottoalbero `.rn-root` gestito dal core con l'host intatto, rimozione di `role="img"`, `textContent` pulito, entry principale senza auto-registrazione, rimozione dell'euristica `-input` di Angular, semantica di riconnessione del custom element, Shadow DOM opzionale con `::part`. Dettagli in `docs/AUDIT.md` §5 e `docs/design/v1.3.md` §13.
